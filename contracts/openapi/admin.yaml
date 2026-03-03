@@ -57,6 +57,14 @@ paths:
                 password:
                   type: string
                   example: password
+                captcha_id:
+                  type: string
+                  description: 需要验证码时填写，由 /api/v1/captcha 获取
+                  example: id-1
+                captcha_code:
+                  type: string
+                  description: 需要验证码时填写，用户输入的验证码文本
+                  example: "1234"
       responses:
         "200":
           description: 登录成功
@@ -74,6 +82,32 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "503":
           $ref: "#/components/responses/AuthUnavailable"
+  /api/v1/captcha:
+    get:
+      summary: 获取验证码
+      description: 生成一次性验证码图片（Base64），用于登录人机校验
+      security: []
+      parameters:
+        - in: query
+          name: preset
+          schema:
+            type: string
+            enum:
+              - easy
+              - default
+          required: false
+          description: 验证码预设，easy 更易识读
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CaptchaResponse"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowed"
+        "503":
+          $ref: "#/components/responses/CaptchaUnavailable"
   /api/v1/config:
     get:
       summary: 获取当前配置
@@ -355,6 +389,18 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/ErrorResponse"
+    CaptchaUnavailable:
+      description: 验证码服务不可用
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    MethodNotAllowed:
+      description: 请求方法不允许
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
   schemas:
     ErrorResponse:
       type: object
@@ -425,6 +471,18 @@ components:
           type: string
           format: date-time
         error:
+          type: string
+    CaptchaResponse:
+      type: object
+      required:
+        - captcha_id
+        - image_base64
+      properties:
+        captcha_id:
+          type: string
+        image_base64:
+          type: string
+        preset:
           type: string
     DataPlaneConfig:
       type: object

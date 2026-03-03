@@ -24,6 +24,8 @@ type Server struct {
 	runtime  *logging.Runtime
 	pipeline *logging.Pipeline
 	limiter  *rateLimiter
+	captcha  captchaService
+	guard    *loginGuard
 }
 
 // NewServer 创建控制平面 HTTP 服务实例。
@@ -33,11 +35,15 @@ type Server struct {
 func NewServer(manager *config.Manager, runtime *logging.Runtime, pipeline *logging.Pipeline) *Server {
 	limitValue := parsePositiveInt(config.EnvOrDefault("ADMIN_RATE_LIMIT_PER_MIN", "60"), 60)
 	limiter := newRateLimiter(limitValue, time.Minute)
+	captcha, _ := newBase64CaptchaService()
+	guard := newLoginGuard(30 * time.Minute)
 	return &Server{
 		manager:  manager,
 		runtime:  runtime,
 		pipeline: pipeline,
 		limiter:  limiter,
+		captcha:  captcha,
+		guard:    guard,
 	}
 }
 
@@ -49,6 +55,7 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", s.health)
 	mux.HandleFunc("/api/v1/login", s.login)
+	mux.HandleFunc("/api/v1/captcha", s.captchaImage)
 
 	// 受保护的接口
 	mux.Handle("/api/v1/config", withAuth(http.HandlerFunc(s.config), s.manager))
@@ -61,44 +68,6 @@ func (s *Server) Handler() http.Handler {
 	handler = withRateLimit(handler, s.limiter)
 	handler = withRequestID(handler)
 	return handler
-}
-
-// login 处理管理员登录请求。
-// 参数：w 为响应写入器，r 为请求对象。
-// 返回：成功返回 token，失败返回错误。
-// 异常：请求体非法或凭证无效时返回相应错误。
-func (s *Server) login(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed", r)
-		return
-	}
-
-	var creds struct {
-		Username string `json:"username"`
-		Password string `json:"password"`
-	}
-	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)) // 4KB limit
-	if err := decoder.Decode(&creds); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_request", "invalid json", r)
-		return
-	}
-
-	auth := s.manager.CurrentConfig().ControlPlane.Auth
-	if auth.Username == "" || auth.Password == "" {
-		writeError(w, http.StatusServiceUnavailable, "auth_not_configured", "admin auth not configured", r)
-		return
-	}
-
-	if creds.Username != auth.Username || creds.Password != auth.Password {
-		// 记录失败尝试? 暂不，避免日志泛滥
-		writeError(w, http.StatusUnauthorized, "invalid_credentials", "invalid username or password", r)
-		return
-	}
-
-	// 登录成功，返回当前 Token
-	writeJSON(w, http.StatusOK, map[string]string{
-		"token": auth.Token,
-	})
 }
 
 // health 返回服务存活状态。
