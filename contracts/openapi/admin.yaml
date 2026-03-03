@@ -36,6 +36,44 @@ paths:
           $ref: "#/components/responses/RateLimited"
         "503":
           $ref: "#/components/responses/AuthUnavailable"
+  /api/v1/login:
+    post:
+      summary: 管理员登录
+      description: 验证用户名密码并返回 API Token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - username
+                - password
+              properties:
+                username:
+                  type: string
+                  example: admin
+                password:
+                  type: string
+                  example: password
+      responses:
+        "200":
+          description: 登录成功
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                    example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "503":
+          $ref: "#/components/responses/AuthUnavailable"
   /api/v1/config:
     get:
       summary: 获取当前配置
@@ -402,6 +440,15 @@ components:
       properties:
         adminListenAddr:
           type: string
+        auth:
+          type: object
+          properties:
+            username:
+              type: string
+            password:
+              type: string
+            token:
+              type: string
     SecurityConfig:
       type: object
       properties:

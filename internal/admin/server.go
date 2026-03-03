@@ -12,17 +12,18 @@ import (
 	"sync"
 	"time"
 
+	"go.uber.org/zap"
+
 	"YoBFF/internal/config"
 	"YoBFF/internal/logging"
 )
 
 // Server 封装控制平面管理接口依赖。
 type Server struct {
-	manager   *config.Manager
-	runtime   *logging.Runtime
-	pipeline  *logging.Pipeline
-	authToken string
-	limiter   *rateLimiter
+	manager  *config.Manager
+	runtime  *logging.Runtime
+	pipeline *logging.Pipeline
+	limiter  *rateLimiter
 }
 
 // NewServer 创建控制平面 HTTP 服务实例。
@@ -30,15 +31,13 @@ type Server struct {
 // 返回：可注册路由的服务对象。
 // 异常：无。
 func NewServer(manager *config.Manager, runtime *logging.Runtime, pipeline *logging.Pipeline) *Server {
-	token := strings.TrimSpace(config.EnvOrDefault("ADMIN_API_TOKEN", ""))
 	limitValue := parsePositiveInt(config.EnvOrDefault("ADMIN_RATE_LIMIT_PER_MIN", "60"), 60)
 	limiter := newRateLimiter(limitValue, time.Minute)
 	return &Server{
-		manager:   manager,
-		runtime:   runtime,
-		pipeline:  pipeline,
-		authToken: token,
-		limiter:   limiter,
+		manager:  manager,
+		runtime:  runtime,
+		pipeline: pipeline,
+		limiter:  limiter,
 	}
 }
 
@@ -49,16 +48,57 @@ func NewServer(manager *config.Manager, runtime *logging.Runtime, pipeline *logg
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", s.health)
-	mux.HandleFunc("/api/v1/config", s.config)
-	mux.HandleFunc("/api/v1/config/cdn", s.cdnConfig)
-	mux.HandleFunc("/api/v1/config/reload", s.reload)
-	mux.HandleFunc("/api/v1/log/level", s.logLevel)
-	mux.HandleFunc("/api/v1/log/stats", s.logStats)
+	mux.HandleFunc("/api/v1/login", s.login)
+
+	// 受保护的接口
+	mux.Handle("/api/v1/config", withAuth(http.HandlerFunc(s.config), s.manager))
+	mux.Handle("/api/v1/config/cdn", withAuth(http.HandlerFunc(s.cdnConfig), s.manager))
+	mux.Handle("/api/v1/config/reload", withAuth(http.HandlerFunc(s.reload), s.manager))
+	mux.Handle("/api/v1/log/level", withAuth(http.HandlerFunc(s.logLevel), s.manager))
+	mux.Handle("/api/v1/log/stats", withAuth(http.HandlerFunc(s.logStats), s.manager))
+
 	handler := http.Handler(mux)
-	handler = withAuth(handler, s.authToken)
 	handler = withRateLimit(handler, s.limiter)
 	handler = withRequestID(handler)
 	return handler
+}
+
+// login 处理管理员登录请求。
+// 参数：w 为响应写入器，r 为请求对象。
+// 返回：成功返回 token，失败返回错误。
+// 异常：请求体非法或凭证无效时返回相应错误。
+func (s *Server) login(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed", r)
+		return
+	}
+
+	var creds struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)) // 4KB limit
+	if err := decoder.Decode(&creds); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", "invalid json", r)
+		return
+	}
+
+	auth := s.manager.CurrentConfig().ControlPlane.Auth
+	if auth.Username == "" || auth.Password == "" {
+		writeError(w, http.StatusServiceUnavailable, "auth_not_configured", "admin auth not configured", r)
+		return
+	}
+
+	if creds.Username != auth.Username || creds.Password != auth.Password {
+		// 记录失败尝试? 暂不，避免日志泛滥
+		writeError(w, http.StatusUnauthorized, "invalid_credentials", "invalid username or password", r)
+		return
+	}
+
+	// 登录成功，返回当前 Token
+	writeJSON(w, http.StatusOK, map[string]string{
+		"token": auth.Token,
+	})
 }
 
 // health 返回服务存活状态。
@@ -124,9 +164,11 @@ func (s *Server) cdnConfig(w http.ResponseWriter, r *http.Request) {
 		fullCfg := s.manager.CurrentConfig()
 		fullCfg.CDNSync = payload
 		if err := s.manager.Apply(fullCfg); err != nil {
+			s.runtime.Logger().Error("CDN 配置应用失败", zap.Error(err))
 			writeError(w, http.StatusBadRequest, "config_apply_failed", err.Error(), r)
 			return
 		}
+		s.runtime.Logger().Info("CDN 配置已更新", zap.Any("config", payload))
 		writeJSON(w, http.StatusOK, map[string]any{
 			"status": "updated",
 			"config": payload,
@@ -291,11 +333,12 @@ func newRequestID() string {
 }
 
 // withAuth 对控制面请求执行 Bearer Token 鉴权。
-// 参数：next 为下一个处理器，token 为期望的鉴权 Token。
+// 参数：next 为下一个处理器，manager 为配置管理器。
 // 返回：包装后的处理器。
 // 异常：无，鉴权失败时直接返回固定错误结构。
-func withAuth(next http.Handler, token string) http.Handler {
+func withAuth(next http.Handler, manager *config.Manager) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		token := manager.CurrentConfig().ControlPlane.Auth.Token
 		if token == "" {
 			writeError(w, http.StatusServiceUnavailable, "auth_not_configured", "admin auth token missing", r)
 			return

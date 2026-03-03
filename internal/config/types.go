@@ -19,7 +19,15 @@ type DataPlaneConfig struct {
 
 // ControlPlaneConfig 表示控制平面监听参数。
 type ControlPlaneConfig struct {
-	AdminListenAddr string `json:"adminListenAddr"`
+	AdminListenAddr string     `json:"adminListenAddr"`
+	Auth            AuthConfig `json:"auth"`
+}
+
+// AuthConfig 定义控制面认证配置。
+type AuthConfig struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+	Token    string `json:"token"`
 }
 
 // CDNSyncConfig 控制 CDN IP 同步行为。
@@ -82,6 +90,11 @@ func defaultConfig() Config {
 		},
 		ControlPlane: ControlPlaneConfig{
 			AdminListenAddr: ":9090",
+			Auth: AuthConfig{
+				Username: "admin",
+				Password: "change_me", // 默认密码，强烈建议修改
+				Token:    "",
+			},
 		},
 		Security: SecurityConfig{
 			BlockPageHTML: "<html><body><h1>403 Forbidden</h1></body></html>",

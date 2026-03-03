@@ -71,6 +71,7 @@ func NewManager(path string) (*Manager, error) {
 	if err != nil {
 		return nil, err
 	}
+	cfg = ApplyEnvOverrides(cfg)
 	if err = manager.Apply(cfg); err != nil {
 		return nil, err
 	}

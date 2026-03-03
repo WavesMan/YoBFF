@@ -22,9 +22,10 @@ import (
 
 // TestWithAuth_TokenMissingReturns503 验证未配置 Token 时返回 503。
 func TestWithAuth_TokenMissingReturns503(t *testing.T) {
+	manager := buildManagerForTest(t, `{"controlPlane": {"auth": {"token": ""}}}`)
 	handler := withAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Fatalf("不应放行")
-	}), "")
+	}), manager)
 
 	req := httptest.NewRequest(http.MethodGet, "http://example.com/healthz", nil)
 	rec := httptest.NewRecorder()
@@ -45,9 +46,10 @@ func TestWithAuth_TokenMissingReturns503(t *testing.T) {
 
 // TestWithAuth_MissingHeaderReturns401 验证缺少 Authorization 时返回 401。
 func TestWithAuth_MissingHeaderReturns401(t *testing.T) {
+	manager := buildManagerForTest(t, `{"controlPlane": {"auth": {"token": "token"}}}`)
 	handler := withAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Fatalf("不应放行")
-	}), "token")
+	}), manager)
 
 	req := httptest.NewRequest(http.MethodGet, "http://example.com/healthz", nil)
 	rec := httptest.NewRecorder()
@@ -60,9 +62,10 @@ func TestWithAuth_MissingHeaderReturns401(t *testing.T) {
 
 // TestWithAuth_InvalidSchemeReturns401 验证非 Bearer 方案时返回 401。
 func TestWithAuth_InvalidSchemeReturns401(t *testing.T) {
+	manager := buildManagerForTest(t, `{"controlPlane": {"auth": {"token": "token"}}}`)
 	handler := withAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Fatalf("不应放行")
-	}), "token")
+	}), manager)
 
 	req := httptest.NewRequest(http.MethodGet, "http://example.com/healthz", nil)
 	req.Header.Set("Authorization", "Basic token")
@@ -76,9 +79,10 @@ func TestWithAuth_InvalidSchemeReturns401(t *testing.T) {
 
 // TestWithAuth_WrongTokenReturns401 验证 Token 不匹配时返回 401。
 func TestWithAuth_WrongTokenReturns401(t *testing.T) {
+	manager := buildManagerForTest(t, `{"controlPlane": {"auth": {"token": "token"}}}`)
 	handler := withAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Fatalf("不应放行")
-	}), "token")
+	}), manager)
 
 	req := httptest.NewRequest(http.MethodGet, "http://example.com/healthz", nil)
 	req.Header.Set("Authorization", "Bearer wrong")
@@ -93,10 +97,11 @@ func TestWithAuth_WrongTokenReturns401(t *testing.T) {
 // TestWithAuth_CorrectTokenPasses 验证 Bearer Token 正确时放行请求。
 func TestWithAuth_CorrectTokenPasses(t *testing.T) {
 	var hit bool
+	manager := buildManagerForTest(t, `{"controlPlane": {"auth": {"token": "token"}}}`)
 	handler := withAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hit = true
 		w.WriteHeader(http.StatusOK)
-	}), "token")
+	}), manager)
 
 	req := httptest.NewRequest(http.MethodGet, "http://example.com/healthz", nil)
 	req.Header.Set("Authorization", "Bearer token")
