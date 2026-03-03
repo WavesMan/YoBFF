@@ -1,0 +1,386 @@
+openapi: 3.0.3
+info:
+  title: YoBFF 控制面 API
+  version: 1.0.0
+servers:
+  - url: http://localhost:9090
+security:
+  - BearerAuth: []
+paths:
+  /healthz:
+    get:
+      summary: 健康检查
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/RequestID"
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/RateLimitLimit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/RateLimitRemaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/RateLimitReset"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/AuthUnavailable"
+  /api/v1/config:
+    get:
+      summary: 获取当前配置
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/RequestID"
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/RateLimitLimit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/RateLimitRemaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/RateLimitReset"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Config"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/AuthUnavailable"
+    put:
+      summary: 更新并应用配置
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Config"
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/RequestID"
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/RateLimitLimit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/RateLimitRemaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/RateLimitReset"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: updated
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/AuthUnavailable"
+  /api/v1/config/reload:
+    post:
+      summary: 触发配置热重载
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/RequestID"
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/RateLimitLimit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/RateLimitRemaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/RateLimitReset"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: reloaded
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/AuthUnavailable"
+  /api/v1/log/level:
+    get:
+      summary: 查询当前日志级别
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/RequestID"
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/RateLimitLimit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/RateLimitRemaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/RateLimitReset"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  level:
+                    type: string
+                    example: info
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/AuthUnavailable"
+    put:
+      summary: 更新日志级别
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LogLevelUpdate"
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/RequestID"
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/RateLimitLimit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/RateLimitRemaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/RateLimitReset"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: updated
+                  level:
+                    type: string
+                    example: info
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/AuthUnavailable"
+  /api/v1/log/stats:
+    get:
+      summary: 获取日志管线统计
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/RequestID"
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/RateLimitLimit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/RateLimitRemaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/RateLimitReset"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LogStats"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/AuthUnavailable"
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+  headers:
+    RequestID:
+      description: 请求追踪标识
+      schema:
+        type: string
+    RateLimitLimit:
+      description: 当前时间窗口最大请求数
+      schema:
+        type: integer
+        format: int32
+    RateLimitRemaining:
+      description: 当前窗口剩余请求数
+      schema:
+        type: integer
+        format: int32
+    RateLimitReset:
+      description: 窗口重置时间戳
+      schema:
+        type: integer
+        format: int64
+  responses:
+    BadRequest:
+      description: 请求非法
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Unauthorized:
+      description: 鉴权失败
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    RateLimited:
+      description: 触发限流
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    AuthUnavailable:
+      description: 鉴权未配置
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+  schemas:
+    ErrorResponse:
+      type: object
+      required:
+        - error_code
+        - message
+        - request_id
+      properties:
+        error_code:
+          type: string
+        message:
+          type: string
+        request_id:
+          type: string
+    Config:
+      type: object
+      required:
+        - dataPlane
+        - controlPlane
+        - security
+        - routing
+        - certificates
+      properties:
+        dataPlane:
+          $ref: "#/components/schemas/DataPlaneConfig"
+        controlPlane:
+          $ref: "#/components/schemas/ControlPlaneConfig"
+        security:
+          $ref: "#/components/schemas/SecurityConfig"
+        routing:
+          $ref: "#/components/schemas/RoutingConfig"
+        certificates:
+          type: array
+          items:
+            $ref: "#/components/schemas/Certificate"
+    DataPlaneConfig:
+      type: object
+      properties:
+        httpListenAddr:
+          type: string
+        httpsListenAddr:
+          type: string
+        enableHttps:
+          type: boolean
+    ControlPlaneConfig:
+      type: object
+      properties:
+        adminListenAddr:
+          type: string
+    SecurityConfig:
+      type: object
+      properties:
+        allowedCidrs:
+          type: array
+          items:
+            type: string
+        blockPageHtml:
+          type: string
+        enableHsts:
+          type: boolean
+    RoutingConfig:
+      type: object
+      properties:
+        defaultUpstream:
+          type: string
+        domains:
+          type: array
+          items:
+            $ref: "#/components/schemas/DomainRule"
+    DomainRule:
+      type: object
+      properties:
+        domain:
+          type: string
+        upstream:
+          type: string
+        forceHttps:
+          type: boolean
+    Certificate:
+      type: object
+      properties:
+        domain:
+          type: string
+        certFile:
+          type: string
+        keyFile:
+          type: string
+        certPem:
+          type: string
+        keyPem:
+          type: string
+    LogLevelUpdate:
+      type: object
+      required:
+        - level
+      properties:
+        level:
+          type: string
+    LogStats:
+      type: object
+      properties:
+        total:
+          type: integer
+          format: uint64
+        blocked:
+          type: integer
+          format: uint64
+        proxied:
+          type: integer
+          format: uint64
+        dropped:
+          type: integer
+          format: uint64

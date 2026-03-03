@@ -1,0 +1,12 @@
+# ide
+.idea/
+.vscode/
+
+# go
+bin/
+dist/
+
+# env
+.env
+.env*
+!.env.example
