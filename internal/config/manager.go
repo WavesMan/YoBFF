@@ -10,7 +10,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
+	"time"
 )
 
 type routeItem struct {
@@ -42,10 +44,21 @@ type RouteMatch struct {
 	Target     *url.URL
 }
 
+// CDNStatus 记录单个 CDN 提供商的同步状态
+type CDNStatus struct {
+	Provider string    `json:"provider"`
+	CIDRs    []string  `json:"cidrs"`
+	LastSync time.Time `json:"last_sync"`
+	Error    string    `json:"error,omitempty"`
+}
+
 // Manager 负责管理运行时配置快照与原子切换。
 type Manager struct {
-	path string
-	data atomic.Pointer[snapshot]
+	path         string
+	data         atomic.Pointer[snapshot]
+	mu           sync.Mutex
+	dynamicCIDRs []string
+	cdnStatuses  map[string]CDNStatus
 }
 
 // NewManager 从配置文件初始化配置管理器。
@@ -89,13 +102,66 @@ func (m *Manager) CurrentConfig() Config {
 // 返回：应用失败错误。
 // 异常：当路由、CIDR 或证书非法时返回错误。
 func (m *Manager) Apply(cfg Config) error {
+	m.mu.Lock()
+	dynamic := m.dynamicCIDRs
+	m.mu.Unlock()
+
 	filled := fillDefaults(cfg)
-	next, err := buildSnapshot(filled, m.path)
+	next, err := buildSnapshot(filled, m.path, dynamic)
 	if err != nil {
 		return err
 	}
 	m.data.Store(next)
 	return nil
+}
+
+// UpdateProviderStatus 更新特定 CDN 提供商的 IP 列表并重构快照。
+// 参数：provider 为提供商名称，cidrs 为新的 IP 列表，syncErr 为同步错误信息（如果有）。
+// 返回：更新失败错误。
+// 异常：无。
+func (m *Manager) UpdateProviderStatus(provider string, cidrs []string, syncErr error) error {
+	m.mu.Lock()
+	if m.cdnStatuses == nil {
+		m.cdnStatuses = make(map[string]CDNStatus)
+	}
+
+	errMsg := ""
+	if syncErr != nil {
+		errMsg = syncErr.Error()
+	}
+
+	m.cdnStatuses[provider] = CDNStatus{
+		Provider: provider,
+		CIDRs:    cidrs,
+		LastSync: time.Now(),
+		Error:    errMsg,
+	}
+
+	var allDynamic []string
+	for _, status := range m.cdnStatuses {
+		if len(status.CIDRs) > 0 {
+			allDynamic = append(allDynamic, status.CIDRs...)
+		}
+	}
+	m.dynamicCIDRs = allDynamic
+	m.mu.Unlock()
+
+	return m.Apply(m.CurrentConfig())
+}
+
+// GetCDNStatus 获取所有 CDN 提供商的同步状态副本。
+// 参数：无。
+// 返回：以提供商名称为键的状态映射。
+// 异常：无。
+func (m *Manager) GetCDNStatus() map[string]CDNStatus {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	copyStatus := make(map[string]CDNStatus, len(m.cdnStatuses))
+	for k, v := range m.cdnStatuses {
+		copyStatus[k] = v
+	}
+	return copyStatus
 }
 
 // Reload 从磁盘重新加载配置并应用到运行时。
@@ -224,10 +290,10 @@ func fillDefaults(cfg Config) Config {
 }
 
 // buildSnapshot 将配置编译为只读快照结构。
-// 参数：cfg 为已补齐配置，configPath 用于定位证书相对路径。
+// 参数：cfg 为已补齐配置，configPath 用于定位证书相对路径，dynamicCIDRs 为动态 IP 白名单。
 // 返回：可原子替换的快照对象。
 // 异常：CIDR、路由或证书加载失败时返回错误。
-func buildSnapshot(cfg Config, configPath string) (*snapshot, error) {
+func buildSnapshot(cfg Config, configPath string, dynamicCIDRs []string) (*snapshot, error) {
 	data := &snapshot{
 		cfg:            cfg,
 		exactRoutes:    make(map[string]routeItem),
@@ -235,10 +301,14 @@ func buildSnapshot(cfg Config, configPath string) (*snapshot, error) {
 		certificates:   make(map[string]*tls.Certificate),
 	}
 
-	if len(cfg.Security.AllowedCIDRs) == 0 {
+	allCIDRs := make([]string, 0, len(cfg.Security.AllowedCIDRs)+len(dynamicCIDRs))
+	allCIDRs = append(allCIDRs, cfg.Security.AllowedCIDRs...)
+	allCIDRs = append(allCIDRs, dynamicCIDRs...)
+
+	if len(allCIDRs) == 0 {
 		data.allowAll = true
 	} else {
-		for _, cidrText := range cfg.Security.AllowedCIDRs {
+		for _, cidrText := range allCIDRs {
 			prefix, err := netip.ParsePrefix(strings.TrimSpace(cidrText))
 			if err != nil {
 				return nil, fmt.Errorf("非法 CIDR %q: %w", cidrText, err)

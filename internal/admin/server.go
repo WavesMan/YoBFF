@@ -50,6 +50,7 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", s.health)
 	mux.HandleFunc("/api/v1/config", s.config)
+	mux.HandleFunc("/api/v1/config/cdn", s.cdnConfig)
 	mux.HandleFunc("/api/v1/config/reload", s.reload)
 	mux.HandleFunc("/api/v1/log/level", s.logLevel)
 	mux.HandleFunc("/api/v1/log/stats", s.logStats)
@@ -92,6 +93,43 @@ func (s *Server) config(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"status": "updated",
+		})
+	default:
+		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed", r)
+	}
+}
+
+// cdnConfig 提供 CDN 同步配置的管理与状态查询。
+// 参数：w 为响应写入器，r 为请求对象。
+// 返回：GET 返回配置与状态，PUT 更新配置。
+// 异常：请求非法或应用失败时返回错误。
+func (s *Server) cdnConfig(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		cfg := s.manager.CurrentConfig().CDNSync
+		status := s.manager.GetCDNStatus()
+		writeJSON(w, http.StatusOK, map[string]any{
+			"config": cfg,
+			"status": status,
+		})
+	case http.MethodPut:
+		var payload config.CDNSyncConfig
+		decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&payload); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_request", err.Error(), r)
+			return
+		}
+
+		fullCfg := s.manager.CurrentConfig()
+		fullCfg.CDNSync = payload
+		if err := s.manager.Apply(fullCfg); err != nil {
+			writeError(w, http.StatusBadRequest, "config_apply_failed", err.Error(), r)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"status": "updated",
+			"config": payload,
 		})
 	default:
 		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed", r)

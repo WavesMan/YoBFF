@@ -2,15 +2,18 @@
 .idea/
 .vscode/
 
-# go
+# go build
 bin/
 dist/
+*.exe
 
 # env
 .env
 .env*
 !.env.example
 
+# feature
+feature-docs/
 
 # go test
 coverage.out

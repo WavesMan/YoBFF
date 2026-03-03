@@ -15,6 +15,7 @@ import (
 	"YoBFF/internal/config"
 	"YoBFF/internal/gateway"
 	"YoBFF/internal/logging"
+	"YoBFF/internal/syncer"
 	"YoBFF/internal/tlsutil"
 
 	"go.uber.org/zap"
@@ -102,6 +103,9 @@ func run(
 	if err = manager.Apply(finalConfig); err != nil {
 		return fmt.Errorf("应用环境变量覆盖配置失败: %w", err)
 	}
+
+	cdnSyncer := syncer.NewService(manager, logger)
+	cdnSyncer.Start(ctx)
 
 	logPipeline := logging.NewPipeline(4096, logger)
 	defer logPipeline.Close()

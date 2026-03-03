@@ -97,6 +97,52 @@ paths:
           $ref: "#/components/responses/RateLimited"
         "503":
           $ref: "#/components/responses/AuthUnavailable"
+  /api/v1/config/cdn:
+    get:
+      summary: 获取 CDN 同步配置与状态
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  config:
+                    $ref: "#/components/schemas/CDNSyncConfig"
+                  status:
+                    type: object
+                    additionalProperties:
+                      $ref: "#/components/schemas/CDNStatus"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "503":
+          $ref: "#/components/responses/AuthUnavailable"
+    put:
+      summary: 更新 CDN 同步配置
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CDNSyncConfig"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: updated
+                  config:
+                    $ref: "#/components/schemas/CDNSyncConfig"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
   /api/v1/config/reload:
     post:
       summary: 触发配置热重载
@@ -287,12 +333,6 @@ components:
           type: string
     Config:
       type: object
-      required:
-        - dataPlane
-        - controlPlane
-        - security
-        - routing
-        - certificates
       properties:
         dataPlane:
           $ref: "#/components/schemas/DataPlaneConfig"
@@ -306,6 +346,48 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Certificate"
+        cdnSync:
+          $ref: "#/components/schemas/CDNSyncConfig"
+    CDNSyncConfig:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        providers:
+          type: array
+          items:
+            type: string
+        schedule:
+          type: string
+        cloudflare:
+          $ref: "#/components/schemas/CloudflareConfig"
+    CloudflareConfig:
+      type: object
+      properties:
+        ipv4_url:
+          type: string
+        ipv6_url:
+          type: string
+        endpoint:
+          type: string
+        api_token:
+          type: string
+        zone_id:
+          type: string
+    CDNStatus:
+      type: object
+      properties:
+        provider:
+          type: string
+        cidrs:
+          type: array
+          items:
+            type: string
+        last_sync:
+          type: string
+          format: date-time
+        error:
+          type: string
     DataPlaneConfig:
       type: object
       properties:

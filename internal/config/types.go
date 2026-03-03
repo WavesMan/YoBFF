@@ -6,6 +6,7 @@ type Config struct {
 	ControlPlane ControlPlaneConfig `json:"controlPlane"`
 	Security     SecurityConfig     `json:"security"`
 	Routing      RoutingConfig      `json:"routing"`
+	CDNSync      CDNSyncConfig      `json:"cdnSync"`
 	Certificates []Certificate      `json:"certificates"`
 }
 
@@ -19,6 +20,24 @@ type DataPlaneConfig struct {
 // ControlPlaneConfig 表示控制平面监听参数。
 type ControlPlaneConfig struct {
 	AdminListenAddr string `json:"adminListenAddr"`
+}
+
+// CDNSyncConfig 控制 CDN IP 同步行为。
+type CDNSyncConfig struct {
+	Enabled    bool             `json:"enabled"`
+	Providers  []string         `json:"providers"` // 支持多个提供商并行启用
+	Schedule   string           `json:"schedule"`
+	Cloudflare CloudflareConfig `json:"cloudflare"`
+}
+
+// CloudflareConfig 定义 Cloudflare 特定配置。
+type CloudflareConfig struct {
+	IPv4URL string `json:"ipv4_url"`
+	IPv6URL string `json:"ipv6_url"`
+	// 以下字段为未来 API 管理预留
+	Endpoint string `json:"endpoint,omitempty"`
+	APIToken string `json:"api_token,omitempty"`
+	ZoneID   string `json:"zone_id,omitempty"`
 }
 
 // SecurityConfig 表示回源安全策略。
@@ -67,6 +86,11 @@ func defaultConfig() Config {
 		Security: SecurityConfig{
 			BlockPageHTML: "<html><body><h1>403 Forbidden</h1></body></html>",
 			EnableHSTS:    false,
+		},
+		CDNSync: CDNSyncConfig{
+			Enabled:   false,
+			Providers: []string{"cloudflare"},
+			Schedule:  "@every 1h",
 		},
 	}
 }
