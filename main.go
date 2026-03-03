@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
@@ -18,6 +19,29 @@ import (
 
 	"go.uber.org/zap"
 )
+
+type serverStarter interface {
+	ListenAndServe(srv *http.Server) error
+	ListenAndServeTLS(srv *http.Server) error
+}
+
+type defaultServerStarter struct{}
+
+// ListenAndServe 启动 HTTP 服务监听。
+// 参数：srv 为 HTTP 服务对象。
+// 返回：服务退出错误。
+// 异常：无。
+func (defaultServerStarter) ListenAndServe(srv *http.Server) error {
+	return srv.ListenAndServe()
+}
+
+// ListenAndServeTLS 启动 HTTPS 服务监听。
+// 参数：srv 为 HTTPS 服务对象。
+// 返回：服务退出错误。
+// 异常：无。
+func (defaultServerStarter) ListenAndServeTLS(srv *http.Server) error {
+	return srv.ListenAndServeTLS("", "")
+}
 
 // main 负责启动控制平面、数据平面与配置热重载流程。
 // 参数：无。
@@ -37,50 +61,70 @@ func main() {
 	defer logRuntime.Sync()
 	logger := logRuntime.Logger()
 
-	// 加载初始配置
 	configPath := config.EnvOrDefault("CONFIG_PATH", "config/config.json")
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+	if err = run(ctx, logger, logRuntime, configPath, defaultServerStarter{}); err != nil {
+		logger.Fatal("服务启动失败", zap.Error(err))
+	}
+}
+
+// run 负责执行可测试的启动流程。
+// 参数：ctx 为退出信号上下文，logger 为日志实例，logRuntime 为日志运行时，configPath 为配置文件路径，starter 为服务启动器。
+// 返回：启动或初始化失败错误。
+// 异常：无。
+func run(
+	ctx context.Context,
+	logger *zap.Logger,
+	logRuntime *logging.Runtime,
+	configPath string,
+	starter serverStarter,
+) error {
+	if logger == nil {
+		logger = zap.NewNop()
+	}
+	if logRuntime == nil {
+		return fmt.Errorf("日志运行时为空")
+	}
+	if configPath == "" {
+		return fmt.Errorf("配置路径为空")
+	}
+	if starter == nil {
+		starter = defaultServerStarter{}
+	}
+
 	manager, err := config.NewManager(configPath)
 	if err != nil {
-		logger.Fatal("加载配置失败", zap.Error(err))
+		return fmt.Errorf("加载配置失败: %w", err)
 	}
 
-	// 应用环境变量覆盖
 	finalConfig := config.ApplyEnvOverrides(manager.CurrentConfig())
 	if err = manager.Apply(finalConfig); err != nil {
-		logger.Fatal("应用环境变量覆盖配置失败", zap.Error(err))
+		return fmt.Errorf("应用环境变量覆盖配置失败: %w", err)
 	}
 
-	// 初始化异步日志管线
 	logPipeline := logging.NewPipeline(4096, logger)
 	defer logPipeline.Close()
 
-	// 初始化业务处理器
 	dataHandler := gateway.NewHandler(manager, logPipeline)
 	adminSrv := admin.NewServer(manager, logRuntime, logPipeline)
-
 	rootHandler := app.BuildRootHandler(dataHandler, adminSrv.Handler())
 
-	// 初始化配置监听器，支持热重载
 	reloadInterval := config.EnvDurationSeconds("CONFIG_RELOAD_INTERVAL_SECONDS", 3)
 	watcher, err := config.NewWatcher(manager, logger, reloadInterval)
 	if err != nil {
-		logger.Fatal("初始化配置监听失败", zap.Error(err))
+		return fmt.Errorf("初始化配置监听失败: %w", err)
 	}
-
-	// 监听系统信号，实现优雅退出
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer cancel()
 	watcher.Start(ctx)
 
 	cfg := manager.CurrentConfig()
-
-	// 提示用户 Admin 端口合并信息
 	if cfg.ControlPlane.AdminListenAddr != "" {
-		logger.Info("注意：AdminListenAddr 配置已废弃，管理接口已合并至主端口 /admin 路径",
-			zap.String("ignored_addr", cfg.ControlPlane.AdminListenAddr))
+		logger.Info(
+			"注意：AdminListenAddr 配置已废弃，管理接口已合并至主端口 /admin 路径",
+			zap.String("ignored_addr", cfg.ControlPlane.AdminListenAddr),
+		)
 	}
 
-	// 初始化 HTTP 服务器
 	httpSrv := &http.Server{
 		Addr:    cfg.DataPlane.HTTPListenAddr,
 		Handler: rootHandler,
@@ -88,22 +132,19 @@ func main() {
 
 	errCh := make(chan error, 3)
 
-	// 启动 HTTP 服务
 	go func() {
 		logger.Info("HTTP 服务启动", zap.String("listen", httpSrv.Addr))
-		if serveErr := httpSrv.ListenAndServe(); serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
+		if serveErr := starter.ListenAndServe(httpSrv); serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
 			errCh <- serveErr
 		}
 	}()
 
-	// 初始化 HTTPS 服务器（如果启用）
 	var httpsSrv *http.Server
 	if cfg.DataPlane.EnableHTTPS && cfg.DataPlane.HTTPSListenAddr != "" {
 		tlsConfig := &tls.Config{
 			MinVersion: tls.VersionTLS12,
 		}
 
-		// 证书加载逻辑
 		if manager.HasCertificates() {
 			tlsConfig.GetCertificate = manager.GetCertificate
 			logger.Info("HTTPS 启用配置证书模式")
@@ -122,23 +163,18 @@ func main() {
 		if tlsConfig.GetCertificate == nil {
 			logger.Warn("未检测到证书且自动签发失败，已跳过 HTTPS 服务")
 		} else {
-			// 为 HTTPS 处理器添加 HSTS 支持
 			httpsHandler := app.WithHSTS(rootHandler, manager)
-
 			httpsSrv = &http.Server{
 				Addr:      cfg.DataPlane.HTTPSListenAddr,
 				Handler:   httpsHandler,
 				TLSConfig: tlsConfig,
 			}
 
-			// 如果启用 HTTPS，将 HTTP 服务处理器替换为强制重定向
-			// 这将覆盖之前的 rootHandler，确保所有 HTTP 流量跳转至 HTTPS
 			httpSrv.Handler = app.RedirectHTTPToHTTPS(httpSrv.Handler, cfg.DataPlane.HTTPSListenAddr)
 
-			// 启动 HTTPS 服务
 			go func() {
 				logger.Info("HTTPS 服务启动", zap.String("listen", httpsSrv.Addr))
-				if serveErr := httpsSrv.ListenAndServeTLS("", ""); serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
+				if serveErr := starter.ListenAndServeTLS(httpsSrv); serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
 					errCh <- serveErr
 				}
 			}()
@@ -149,7 +185,6 @@ func main() {
 		logger.Warn("HTTPS 监听地址为空，已跳过 HTTPS 服务")
 	}
 
-	// 等待退出信号或服务错误
 	select {
 	case <-ctx.Done():
 		logger.Info("收到退出信号，开始优雅关闭")
@@ -157,14 +192,17 @@ func main() {
 		logger.Error("服务异常退出", zap.Error(serveErr))
 	}
 
-	// 执行优雅关闭
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), config.EnvDurationSeconds("SHUTDOWN_TIMEOUT_SECONDS", 5))
+	shutdownCtx, shutdownCancel := context.WithTimeout(
+		context.Background(),
+		config.EnvDurationSeconds("SHUTDOWN_TIMEOUT_SECONDS", 5),
+	)
 	defer shutdownCancel()
 
 	shutdownServer(shutdownCtx, logger, "HTTP 服务", httpSrv)
 	if httpsSrv != nil {
 		shutdownServer(shutdownCtx, logger, "HTTPS 服务", httpsSrv)
 	}
+	return nil
 }
 
 // shutdownServer 统一执行服务优雅关闭并记录结果日志。
