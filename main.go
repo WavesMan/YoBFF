@@ -4,15 +4,13 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
-	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 
 	"YoBFF/internal/admin"
+	"YoBFF/internal/app"
 	"YoBFF/internal/config"
 	"YoBFF/internal/gateway"
 	"YoBFF/internal/logging"
@@ -60,16 +58,7 @@ func main() {
 	dataHandler := gateway.NewHandler(manager, logPipeline)
 	adminSrv := admin.NewServer(manager, logRuntime, logPipeline)
 
-	// 组合路由处理器：根据路径前缀分发请求
-	// /admin/ 开头的请求转发至控制平面（去除前缀）
-	// 其他请求转发至数据平面
-	rootHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasPrefix(r.URL.Path, "/admin/") {
-			http.StripPrefix("/admin", adminSrv.Handler()).ServeHTTP(w, r)
-			return
-		}
-		dataHandler.ServeHTTP(w, r)
-	})
+	rootHandler := app.BuildRootHandler(dataHandler, adminSrv.Handler())
 
 	// 初始化配置监听器，支持热重载
 	reloadInterval := config.EnvDurationSeconds("CONFIG_RELOAD_INTERVAL_SECONDS", 3)
@@ -134,7 +123,7 @@ func main() {
 			logger.Warn("未检测到证书且自动签发失败，已跳过 HTTPS 服务")
 		} else {
 			// 为 HTTPS 处理器添加 HSTS 支持
-			httpsHandler := withHSTS(rootHandler, manager)
+			httpsHandler := app.WithHSTS(rootHandler, manager)
 
 			httpsSrv = &http.Server{
 				Addr:      cfg.DataPlane.HTTPSListenAddr,
@@ -144,7 +133,7 @@ func main() {
 
 			// 如果启用 HTTPS，将 HTTP 服务处理器替换为强制重定向
 			// 这将覆盖之前的 rootHandler，确保所有 HTTP 流量跳转至 HTTPS
-			httpSrv.Handler = redirectHTTPToHTTPS(httpSrv.Handler, cfg.DataPlane.HTTPSListenAddr)
+			httpSrv.Handler = app.RedirectHTTPToHTTPS(httpSrv.Handler, cfg.DataPlane.HTTPSListenAddr)
 
 			// 启动 HTTPS 服务
 			go func() {
@@ -191,66 +180,4 @@ func shutdownServer(ctx context.Context, logger *zap.Logger, name string, srv *h
 		return
 	}
 	logger.Info("服务关闭完成", zap.String("server", name))
-}
-
-// withHSTS 为处理器添加 HSTS 响应头。
-// 参数：next 为下一个处理器，manager 为配置管理器。
-// 返回：包装后的处理器。
-func withHSTS(next http.Handler, manager *config.Manager) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		cfg := manager.CurrentConfig()
-		if cfg.Security.EnableHSTS && r.TLS != nil {
-			w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
-		}
-		next.ServeHTTP(w, r)
-	})
-}
-
-// redirectHTTPToHTTPS 将 HTTP 请求重定向至 HTTPS。
-// 参数：next 为备用处理器（当请求已加密时使用），httpsListenAddr 为 HTTPS 监听地址。
-// 返回：重定向处理器。
-func redirectHTTPToHTTPS(next http.Handler, httpsListenAddr string) http.Handler {
-	targetPort := resolvePort(httpsListenAddr)
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// 如果请求已经是 TLS 加密的，直接处理
-		if r.TLS != nil {
-			next.ServeHTTP(w, r)
-			return
-		}
-		// 构建重定向目标 URL
-		target := &url.URL{
-			Scheme:   "https",
-			Host:     buildHTTPSHost(r.Host, targetPort),
-			Path:     r.URL.Path,
-			RawQuery: r.URL.RawQuery,
-		}
-		// 执行 301 永久重定向
-		http.Redirect(w, r, target.String(), http.StatusMovedPermanently)
-	})
-}
-
-// resolvePort 从地址字符串中提取端口号。
-// 参数：listenAddr 为监听地址（如 :8443）。
-// 返回：端口号字符串，若解析失败默认返回 443。
-func resolvePort(listenAddr string) string {
-	_, port, err := net.SplitHostPort(listenAddr)
-	if err == nil {
-		return port
-	}
-	return "443"
-}
-
-// buildHTTPSHost 构建重定向目标的 Host 字符串。
-// 参数：sourceHost 为原始 Host，targetPort 为目标端口。
-// 返回：包含目标端口的 Host 字符串。
-func buildHTTPSHost(sourceHost string, targetPort string) string {
-	host, _, err := net.SplitHostPort(sourceHost)
-	if err != nil {
-		// 如果 sourceHost 不含端口，直接使用它
-		host = sourceHost
-	}
-	if targetPort == "443" {
-		return host
-	}
-	return net.JoinHostPort(host, targetPort)
 }

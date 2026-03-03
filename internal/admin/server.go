@@ -187,6 +187,10 @@ type errorResponse struct {
 	RequestID string `json:"request_id"`
 }
 
+// writeError 统一输出错误响应结构并补齐请求追踪信息。
+// 参数：w 为响应写入器，status 为 HTTP 状态码，code 为错误码，message 为错误描述，r 为请求对象。
+// 返回：无。
+// 异常：无。
 func writeError(w http.ResponseWriter, status int, code string, message string, r *http.Request) {
 	requestID := requestIDFromContext(r.Context())
 	if requestID == "" {
@@ -204,6 +208,10 @@ type contextKey string
 
 const requestIDKey contextKey = "request_id"
 
+// withRequestID 为请求生成或透传 request_id，并写入响应头与上下文。
+// 参数：next 为下一个处理器。
+// 返回：包装后的处理器。
+// 异常：无。
 func withRequestID(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requestID := strings.TrimSpace(r.Header.Get("X-Request-ID"))
@@ -216,6 +224,10 @@ func withRequestID(next http.Handler) http.Handler {
 	})
 }
 
+// requestIDFromContext 从上下文中读取 request_id。
+// 参数：ctx 为请求上下文。
+// 返回：request_id 字符串，若不存在则返回空字符串。
+// 异常：无。
 func requestIDFromContext(ctx context.Context) string {
 	value := ctx.Value(requestIDKey)
 	if value == nil {
@@ -228,6 +240,10 @@ func requestIDFromContext(ctx context.Context) string {
 	return requestID
 }
 
+// newRequestID 生成请求追踪标识，用于跨日志与错误响应关联同一次请求。
+// 参数：无。
+// 返回：随机 request_id，随机源失败时回退为纳秒时间戳字符串。
+// 异常：无。
 func newRequestID() string {
 	buffer := make([]byte, 16)
 	if _, err := rand.Read(buffer); err != nil {
@@ -236,6 +252,10 @@ func newRequestID() string {
 	return hex.EncodeToString(buffer)
 }
 
+// withAuth 对控制面请求执行 Bearer Token 鉴权。
+// 参数：next 为下一个处理器，token 为期望的鉴权 Token。
+// 返回：包装后的处理器。
+// 异常：无，鉴权失败时直接返回固定错误结构。
 func withAuth(next http.Handler, token string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if token == "" {
@@ -260,6 +280,10 @@ func withAuth(next http.Handler, token string) http.Handler {
 	})
 }
 
+// withRateLimit 对控制面请求执行固定窗口限流，按客户端地址计数。
+// 参数：next 为下一个处理器，limiter 为限流器实例。
+// 返回：包装后的处理器。
+// 异常：无，触发限流时返回固定错误结构。
 func withRateLimit(next http.Handler, limiter *rateLimiter) http.Handler {
 	if limiter == nil {
 		return next
@@ -278,6 +302,10 @@ func withRateLimit(next http.Handler, limiter *rateLimiter) http.Handler {
 	})
 }
 
+// clientKey 生成限流计数的客户端键，优先取代理链路的真实地址。
+// 参数：r 为请求对象。
+// 返回：用于限流的客户端标识字符串。
+// 异常：无。
 func clientKey(r *http.Request) string {
 	xff := strings.TrimSpace(r.Header.Get("X-Forwarded-For"))
 	if xff != "" {
@@ -315,6 +343,10 @@ type rateEntry struct {
 	reset time.Time
 }
 
+// newRateLimiter 创建固定窗口限流器。
+// 参数：limit 为窗口内最大请求数，window 为统计窗口时长。
+// 返回：限流器实例；当 limit 非法时返回 nil 表示不启用限流。
+// 异常：无。
 func newRateLimiter(limit int, window time.Duration) *rateLimiter {
 	if limit <= 0 {
 		return nil
@@ -326,6 +358,10 @@ func newRateLimiter(limit int, window time.Duration) *rateLimiter {
 	}
 }
 
+// Allow 判断给定 key 在当前窗口内是否允许请求。
+// 参数：key 为客户端标识。
+// 返回：remaining 为剩余配额，reset 为窗口重置时间，allowed 表示是否放行。
+// 异常：无。
 func (l *rateLimiter) Allow(key string) (int, time.Time, bool) {
 	if l == nil || l.limit <= 0 {
 		return 0, time.Now().Add(time.Minute), true
@@ -349,6 +385,10 @@ func (l *rateLimiter) Allow(key string) (int, time.Time, bool) {
 	return remaining, entry.reset, true
 }
 
+// parsePositiveInt 解析正整数文本，失败时回退为默认值。
+// 参数：value 为待解析文本，fallback 为默认值。
+// 返回：解析后的正整数或默认值。
+// 异常：无。
 func parsePositiveInt(value string, fallback int) int {
 	trimmed := strings.TrimSpace(value)
 	if trimmed == "" {
