@@ -6,6 +6,7 @@ import type {
   HealthzResponse,
   LogLevelResponse,
   LogStats,
+  LoginCaptchaRequirementResponse,
   LoginPayload,
   LoginResponse,
 } from './types'
@@ -126,4 +127,12 @@ export async function loginAdmin(payload: LoginPayload) {
     method: 'POST',
     body: JSON.stringify(payload),
   })
+}
+
+export async function fetchLoginCaptchaRequirement() {
+  return apiRequest<LoginCaptchaRequirementResponse>(`${API_BASE}/login/require-captcha`)
+}
+
+export async function logoutAdmin(token: string) {
+  return apiRequest(`${API_BASE}/logout`, { method: 'POST' }, token)
 }

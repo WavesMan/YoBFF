@@ -55,7 +55,9 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", s.health)
 	mux.HandleFunc("/api/v1/login", s.login)
+	mux.HandleFunc("/api/v1/login/require-captcha", s.loginCaptchaRequirement)
 	mux.HandleFunc("/api/v1/captcha", s.captchaImage)
+	mux.Handle("/api/v1/logout", withAuth(http.HandlerFunc(s.logout), s.manager))
 
 	// 受保护的接口
 	mux.Handle("/api/v1/config", withAuth(http.HandlerFunc(s.config), s.manager))
@@ -68,6 +70,10 @@ func (s *Server) Handler() http.Handler {
 	return s.WrapHandler(handler)
 }
 
+// WrapHandler 为控制平面统一注入限流与请求追踪中间件。
+// 参数：handler 为基础处理器。
+// 返回：包装后的处理器；handler 为空时返回 404 处理器。
+// 异常：无。
 func (s *Server) WrapHandler(handler http.Handler) http.Handler {
 	if handler == nil {
 		return http.NotFoundHandler()

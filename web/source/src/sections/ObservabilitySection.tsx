@@ -1,4 +1,27 @@
-export function ObservabilitySection() {
+import type { HealthzResponse, LogStats } from '../admin/types'
+
+type ObservabilitySectionProps = {
+  health: HealthzResponse | null
+  logStats: LogStats | null
+  loadingHealth: boolean
+  loadingLogStats: boolean
+}
+
+export function ObservabilitySection({
+  health,
+  logStats,
+  loadingHealth,
+  loadingLogStats,
+}: ObservabilitySectionProps) {
+  const isLoading = loadingHealth || loadingLogStats
+  const logLines = [
+    `健康检查 ${health?.status || 'unknown'}`,
+    `日志总量 ${logStats?.total ?? '-'}`,
+    `阻断请求 ${logStats?.blocked ?? '-'}`,
+    `转发请求 ${logStats?.proxied ?? '-'}`,
+    `丢弃请求 ${logStats?.dropped ?? '-'}`,
+  ]
+
   return (
     <div className="grid grid-2">
       <div className="card">
@@ -7,10 +30,9 @@ export function ObservabilitySection() {
           <span className="pill">WebSocket</span>
         </div>
         <div className="log-console">
-          10:00:01 信息 HTTP 服务启动 :8080{'\n'}
-          10:00:02 就绪 上游健康检查通过: 127.0.0.1:3000{'\n'}
-          10:00:05 警告 IP 触发限流: 192.168.1.100{'\n'}
-          10:00:12 错误 Redis 连接失败: connection refused
+          {isLoading
+            ? '日志加载中...'
+            : logLines.map((line, index) => (index === logLines.length - 1 ? line : `${line}\n`))}
         </div>
       </div>
       <div className="card">
@@ -38,7 +60,16 @@ export function ObservabilitySection() {
               </select>
             </div>
           </div>
-          <div className="muted">分析数据按需接入后端查询接口</div>
+          {isLoading ? (
+            <div className="skeleton" />
+          ) : (
+            <div className="inline">
+              <span className="badge">total {logStats?.total ?? '-'}</span>
+              <span className="badge">blocked {logStats?.blocked ?? '-'}</span>
+              <span className="badge">proxied {logStats?.proxied ?? '-'}</span>
+              <span className="badge">dropped {logStats?.dropped ?? '-'}</span>
+            </div>
+          )}
         </div>
       </div>
     </div>

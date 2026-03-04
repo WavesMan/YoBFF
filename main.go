@@ -220,6 +220,10 @@ func run(
 	return nil
 }
 
+// buildUIHandler 选择外部目录或内嵌资源初始化管理端静态资源处理器。
+// 参数：无。
+// 返回：管理端静态资源处理器与初始化错误。
+// 异常：资源缺失或创建失败时返回错误。
 func buildUIHandler() (http.Handler, error) {
 	dir := strings.TrimSpace(os.Getenv("ADMIN_UI_DIR"))
 	if dir != "" {

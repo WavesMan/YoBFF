@@ -47,6 +47,10 @@ func BuildRootHandler(dataHandler http.Handler, adminHandler http.Handler, uiHan
 	})
 }
 
+// NewUIHandler 构建管理端静态资源处理器并注入 SPA 入口兜底。
+// 参数：fsys 为 UI 静态资源文件系统。
+// 返回：可处理管理端前端资源的处理器。
+// 异常：资源缺失或初始化失败时返回错误。
 func NewUIHandler(fsys fs.FS) (http.Handler, error) {
 	if fsys == nil {
 		return nil, errors.New("ui fs is nil")
@@ -73,6 +77,10 @@ func NewUIHandler(fsys fs.FS) (http.Handler, error) {
 	}), nil
 }
 
+// isUIAssetPath 判断路径是否属于前端静态资源。
+// 参数：path 为请求路径。
+// 返回：true 表示命中静态资源路由。
+// 异常：无。
 func isUIAssetPath(path string) bool {
 	if strings.HasPrefix(path, "/assets/") {
 		return true
@@ -85,6 +93,10 @@ func isUIAssetPath(path string) bool {
 	}
 }
 
+// fileExists 判断目标文件是否存在且非目录。
+// 参数：fsys 为文件系统，name 为文件路径。
+// 返回：true 表示文件存在。
+// 异常：无。
 func fileExists(fsys fs.FS, name string) bool {
 	if name == "" {
 		return false
@@ -96,6 +108,10 @@ func fileExists(fsys fs.FS, name string) bool {
 	return !info.IsDir()
 }
 
+// serveIndex 返回管理端 SPA 入口文件内容。
+// 参数：w 为响应写入器，r 为请求对象，fsys 为静态资源文件系统。
+// 返回：无。
+// 异常：读取或解析失败时返回对应状态码。
 func serveIndex(w http.ResponseWriter, r *http.Request, fsys fs.FS) {
 	file, err := fsys.Open("index.html")
 	if err != nil {

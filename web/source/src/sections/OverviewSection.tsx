@@ -16,6 +16,25 @@ export function OverviewSection({
   loadingLogStats,
 }: OverviewSectionProps) {
   const healthStatus = health?.status === 'ok' ? 'success' : 'warning'
+  const alertItems = []
+  if (health && health.status !== 'ok') {
+    alertItems.push({ level: 'error', text: '健康检查异常' })
+  }
+  if ((logStats?.blocked ?? 0) > 0) {
+    alertItems.push({
+      level: 'warning',
+      text: `触发限流 ${logStats?.blocked ?? 0} 次`,
+    })
+  }
+  if ((logStats?.dropped ?? 0) > 0) {
+    alertItems.push({
+      level: 'error',
+      text: `请求丢弃 ${logStats?.dropped ?? 0} 次`,
+    })
+  }
+  if (alertItems.length === 0) {
+    alertItems.push({ level: 'success', text: '暂无告警' })
+  }
 
   return (
     <>
@@ -73,18 +92,12 @@ export function OverviewSection({
             <span className="pill">近 5 条</span>
           </div>
           <div className="stack">
-            <div className="inline">
-              <span className="status-dot status-warning" />
-              限流触发，建议检查突发流量或提升策略
-            </div>
-            <div className="inline">
-              <span className="status-dot status-error" />
-              Auth 未配置，登录将无法生效
-            </div>
-            <div className="inline">
-              <span className="status-dot status-success" />
-              控制面心跳正常
-            </div>
+            {alertItems.map((item, index) => (
+              <div className="inline" key={`${item.level}-${index}`}>
+                <span className={`status-dot status-${item.level}`} />
+                {item.text}
+              </div>
+            ))}
           </div>
         </div>
         <div className="card">

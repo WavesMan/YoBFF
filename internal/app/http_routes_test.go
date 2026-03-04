@@ -7,6 +7,10 @@ import (
 	"testing"
 )
 
+// TestBuildRootHandler_AdminRedirect 验证 /admin 访问会重定向到尾斜杠路径。
+// 参数：t 为测试上下文。
+// 返回：无。
+// 异常：断言失败时终止测试。
 func TestBuildRootHandler_AdminRedirect(t *testing.T) {
 	handler := BuildRootHandler(
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -31,6 +35,10 @@ func TestBuildRootHandler_AdminRedirect(t *testing.T) {
 	}
 }
 
+// TestBuildRootHandler_RouteToAdminWithStripPrefix 验证 /admin 前缀会被移除后进入控制面。
+// 参数：t 为测试上下文。
+// 返回：无。
+// 异常：断言失败时终止测试。
 func TestBuildRootHandler_RouteToAdminWithStripPrefix(t *testing.T) {
 	var gotPath string
 	adminHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -54,6 +62,10 @@ func TestBuildRootHandler_RouteToAdminWithStripPrefix(t *testing.T) {
 	}
 }
 
+// TestBuildRootHandler_HealthzGoesToAdminWithoutStripPrefix 验证 /healthz 直达控制面且不去前缀。
+// 参数：t 为测试上下文。
+// 返回：无。
+// 异常：断言失败时终止测试。
 func TestBuildRootHandler_HealthzGoesToAdminWithoutStripPrefix(t *testing.T) {
 	var gotPath string
 	adminHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -74,6 +86,10 @@ func TestBuildRootHandler_HealthzGoesToAdminWithoutStripPrefix(t *testing.T) {
 	}
 }
 
+// TestBuildRootHandler_RootReturnsOKJSON 验证根路径返回服务状态 JSON。
+// 参数：t 为测试上下文。
+// 返回：无。
+// 异常：断言失败时终止测试。
 func TestBuildRootHandler_RootReturnsOKJSON(t *testing.T) {
 	handler := BuildRootHandler(http.NotFoundHandler(), http.NotFoundHandler(), nil)
 
@@ -95,6 +111,10 @@ func TestBuildRootHandler_RootReturnsOKJSON(t *testing.T) {
 	}
 }
 
+// TestBuildRootHandler_FaviconReturnsNoContent 验证 favicon 请求返回空内容状态。
+// 参数：t 为测试上下文。
+// 返回：无。
+// 异常：断言失败时终止测试。
 func TestBuildRootHandler_FaviconReturnsNoContent(t *testing.T) {
 	handler := BuildRootHandler(http.NotFoundHandler(), http.NotFoundHandler(), nil)
 
@@ -107,6 +127,10 @@ func TestBuildRootHandler_FaviconReturnsNoContent(t *testing.T) {
 	}
 }
 
+// TestBuildRootHandler_DefaultGoesToDataPlane 验证非管理端路径转发到数据面。
+// 参数：t 为测试上下文。
+// 返回：无。
+// 异常：断言失败时终止测试。
 func TestBuildRootHandler_DefaultGoesToDataPlane(t *testing.T) {
 	var dataHit bool
 	dataHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -133,6 +157,10 @@ func TestBuildRootHandler_DefaultGoesToDataPlane(t *testing.T) {
 	}
 }
 
+// TestBuildRootHandler_RootGoesToUI 验证根路径优先命中管理端 UI 处理器。
+// 参数：t 为测试上下文。
+// 返回：无。
+// 异常：断言失败时终止测试。
 func TestBuildRootHandler_RootGoesToUI(t *testing.T) {
 	var uiHit bool
 	uiHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

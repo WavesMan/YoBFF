@@ -105,3 +105,7 @@ export type LoginPayload = {
 export type LoginResponse = {
   token?: string
 }
+
+export type LoginCaptchaRequirementResponse = {
+  required: boolean
+}

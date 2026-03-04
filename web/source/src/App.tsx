@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import { FiActivity, FiEye, FiShield, FiShuffle, FiSliders } from 'react-icons/fi'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { FiActivity, FiEye, FiSettings, FiShield, FiShuffle, FiSliders } from 'react-icons/fi'
 import './App.css'
 import {
   applyConfig as applyConfigRequest,
@@ -7,9 +7,11 @@ import {
   fetchCdnConfig,
   fetchConfig,
   fetchHealthz,
+  fetchLoginCaptchaRequirement,
   fetchLogLevel,
   fetchLogStats,
   loginAdmin,
+  logoutAdmin,
   normalizeConfig,
   reloadConfig as reloadConfigRequest,
   updateLogLevel as updateLogLevelRequest,
@@ -38,6 +40,7 @@ const menuItems = [
   { key: 'security', label: '安全防护', icon: <FiShield /> },
   { key: 'observability', label: '观测中心', icon: <FiEye /> },
   { key: 'system', label: '系统设置', icon: <FiSliders /> },
+  { key: 'config', label: '配置应用', icon: <FiSettings /> },
 ]
 
 function App() {
@@ -51,6 +54,7 @@ function App() {
   const [configDraft, setConfigDraft] = useState<Config>(normalizeConfig(null))
   const [cdnStatus, setCdnStatus] = useState<Record<string, CDNStatus>>({})
   const [captcha, setCaptcha] = useState<CaptchaResponse | null>(null)
+  const [captchaRequired, setCaptchaRequired] = useState(false)
   const [loginForm, setLoginForm] = useState<LoginPayload>({
     username: '',
     password: '',
@@ -136,28 +140,43 @@ function App() {
     loadConfig()
   }, [token])
 
+  const refreshCaptchaRequirement = useCallback(async () => {
+    try {
+      const data = await fetchLoginCaptchaRequirement()
+      if (!data.required) {
+        setCaptchaRequired(false)
+        setCaptcha(null)
+        setLoginForm((prev) => ({
+          ...prev,
+          captcha_id: '',
+          captcha_code: '',
+        }))
+        return
+      }
+      setCaptchaRequired(true)
+      const captchaData = await fetchCaptcha('default')
+      setCaptcha(captchaData)
+      setLoginForm((prev) => ({
+        ...prev,
+        captcha_id: captchaData.captcha_id,
+        captcha_code: '',
+      }))
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : '验证码状态获取失败')
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!token) {
+      refreshCaptchaRequirement()
+    }
+  }, [refreshCaptchaRequirement, token])
+
   useEffect(() => {
     if (advancedMode) {
       setJsonDraft(JSON.stringify(configDraft, null, 2))
     }
   }, [advancedMode, configDraft])
-
-  useEffect(() => {
-    if (token) {
-      return
-    }
-    const loadCaptcha = async () => {
-      setErrorMessage('')
-      try {
-        const data = await fetchCaptcha('default')
-        setCaptcha(data)
-        setLoginForm((prev) => ({ ...prev, captcha_id: data.captcha_id }))
-      } catch (error) {
-        setErrorMessage(error instanceof Error ? error.message : '验证码获取失败')
-      }
-    }
-    loadCaptcha()
-  }, [token])
 
   const handleAllowedCidrsChange = (value: string) => {
     const cidrs = value
@@ -300,8 +319,35 @@ function App() {
       setStatusMessage('登录成功')
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : '登录失败')
+      await refreshCaptchaRequirement()
     }
   }
+
+  const handleLogout = async () => {
+    setErrorMessage('')
+    setStatusMessage('')
+    if (token) {
+      try {
+        await logoutAdmin(token)
+      } catch (error) {
+        setErrorMessage(error instanceof Error ? error.message : '登出失败')
+      }
+    }
+    localStorage.removeItem('yobff_token')
+    setToken(null)
+    setLogStats(null)
+    setConfig(null)
+    setConfigDraft(normalizeConfig(null))
+    setCdnStatus({})
+    setJsonDraft('')
+    setStatusMessage('已退出登录')
+  }
+
+  const captchaImageSrc = captcha?.image_base64
+    ? captcha.image_base64.startsWith('data:image/')
+      ? captcha.image_base64
+      : `data:image/png;base64,${captcha.image_base64}`
+    : ''
 
   if (!token) {
     return (
@@ -357,37 +403,35 @@ function App() {
                 />
               </div>
             </div>
-            <div className="form-row">
-              <div className="form-field">
-                <label className="label">验证码</label>
-                <input
-                  className="input"
-                  value={loginForm.captcha_code || ''}
-                  onChange={(event) =>
-                    setLoginForm({
-                      ...loginForm,
-                      captcha_code: event.target.value,
-                    })
-                  }
-                  placeholder="1234"
-                />
-              </div>
-              <div className="form-field">
-                <label className="label">验证码图片</label>
-                <div className="inline">
-                  <button className="button secondary" onClick={handleFetchCaptcha}>
-                    获取验证码
-                  </button>
-                  {captcha?.image_base64 && (
-                    <img
-                      className="captcha-image"
-                      src={`data:image/png;base64,${captcha.image_base64}`}
-                      alt="验证码"
-                    />
-                  )}
+            {captchaRequired && (
+              <div className="form-row">
+                <div className="form-field">
+                  <label className="label">验证码</label>
+                  <input
+                    className="input"
+                    value={loginForm.captcha_code || ''}
+                    onChange={(event) =>
+                      setLoginForm({
+                        ...loginForm,
+                        captcha_code: event.target.value,
+                      })
+                    }
+                    placeholder="1234"
+                  />
+                </div>
+                <div className="form-field">
+                  <label className="label">验证码图片</label>
+                  <div className="inline">
+                    <button className="button secondary" onClick={handleFetchCaptcha}>
+                      获取验证码
+                    </button>
+                    {captchaImageSrc && (
+                      <img className="captcha-image" src={captchaImageSrc} alt="验证码" />
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
             <button className="button primary" onClick={handleLogin}>
               登录并进入面板
             </button>
@@ -407,7 +451,7 @@ function App() {
         onToggle={() => setSidebarCollapsed((prev) => !prev)}
       />
       <div className="content">
-        <TopBar breadcrumbs={breadcrumbs} token={token} />
+        <TopBar breadcrumbs={breadcrumbs} token={token} onLogout={handleLogout} />
         <main className="main">
           <div>
             <h1 className="page-title">BFF 负载均衡网关管理端</h1>
@@ -458,7 +502,14 @@ function App() {
               onBlockPageChange={handleBlockPageChange}
             />
           )}
-          {activeSection === 'observability' && <ObservabilitySection />}
+          {activeSection === 'observability' && (
+            <ObservabilitySection
+              health={health}
+              logStats={logStats}
+              loadingHealth={loading.health}
+              loadingLogStats={loading.logStats}
+            />
+          )}
           {activeSection === 'system' && (
             <SystemSection
               logLevel={logLevel}
@@ -473,21 +524,23 @@ function App() {
               onLogin={handleLogin}
             />
           )}
-          <ConfigPanel
-            configDraft={configDraft}
-            configSnapshot={config}
-            advancedMode={advancedMode}
-            jsonDraft={jsonDraft}
-            loadingApplying={loading.applying}
-            onToggleMode={setAdvancedMode}
-            onJsonChange={setJsonDraft}
-            onConfigChange={setConfigDraft}
-            onApply={handleApplyConfig}
-            onReset={() => {
-              setConfigDraft(normalizeConfig(config))
-              setStatusMessage('已恢复到最近一次读取的配置')
-            }}
-          />
+          {activeSection === 'config' && (
+            <ConfigPanel
+              configDraft={configDraft}
+              configSnapshot={config}
+              advancedMode={advancedMode}
+              jsonDraft={jsonDraft}
+              loadingApplying={loading.applying}
+              onToggleMode={setAdvancedMode}
+              onJsonChange={setJsonDraft}
+              onConfigChange={setConfigDraft}
+              onApply={handleApplyConfig}
+              onReset={() => {
+                setConfigDraft(normalizeConfig(config))
+                setStatusMessage('已恢复到最近一次读取的配置')
+              }}
+            />
+          )}
           {loading.config && (
             <div className="card">
               <div className="stack">

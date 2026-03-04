@@ -124,3 +124,29 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		"token": auth.Token,
 	})
 }
+
+func (s *Server) loginCaptchaRequirement(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed", r)
+		return
+	}
+	key := clientKey(r)
+	required := s.guard != nil && s.guard.RequireCaptcha(key)
+	writeJSON(w, http.StatusOK, map[string]bool{
+		"required": required,
+	})
+}
+
+func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed", r)
+		return
+	}
+	key := clientKey(r)
+	if s.runtime != nil {
+		s.runtime.Logger().Info("管理员登出", zap.String("client", key))
+	}
+	writeJSON(w, http.StatusOK, map[string]string{
+		"status": "logged_out",
+	})
+}
