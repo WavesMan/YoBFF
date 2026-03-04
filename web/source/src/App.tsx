@@ -79,6 +79,39 @@ function App() {
     return `控制台 / ${current?.label || '仪表盘'}`
   }, [activeSection])
 
+  const pageHeader = useMemo(() => {
+    const headers: Record<string, { title: string; subtitle: string }> = {
+      dashboard: {
+        title: '仪表盘',
+        subtitle: '核心健康度与流量态势概览',
+      },
+      traffic: {
+        title: '流量管理',
+        subtitle: '域名与转发策略的统一配置入口',
+      },
+      security: {
+        title: '安全防护',
+        subtitle: '访问控制与防护策略集中管理',
+      },
+      observability: {
+        title: '观测中心',
+        subtitle: '日志与指标的实时观测视图',
+      },
+      system: {
+        title: '系统设置',
+        subtitle: '运行参数与管理能力的集中配置',
+      },
+      config: {
+        title: '配置应用',
+        subtitle: '基础模式与高级 JSON 配置提交',
+      },
+    }
+    return headers[activeSection] || {
+      title: 'BFF 负载均衡网关管理端',
+      subtitle: '沉浸式暗色风格，支持配置实时感知与审计流程',
+    }
+  }, [activeSection])
+
   useEffect(() => {
     const loadHealth = async () => {
       setLoading((prev) => ({ ...prev, health: true }))
@@ -454,8 +487,8 @@ function App() {
         <TopBar breadcrumbs={breadcrumbs} token={token} onLogout={handleLogout} />
         <main className="main">
           <div>
-            <h1 className="page-title">BFF 负载均衡网关管理端</h1>
-            <p className="page-subtitle">沉浸式暗色风格，支持配置实时感知与审计流程</p>
+            <h1 className="page-title">{pageHeader.title}</h1>
+            <p className="page-subtitle">{pageHeader.subtitle}</p>
           </div>
           {errorMessage && (
             <div className="error-banner" role="alert">
@@ -517,11 +550,6 @@ function App() {
               onLogLevelChange={handleLogLevelChange}
               loadingReload={loading.reload}
               onReload={handleReload}
-              loginForm={loginForm}
-              onLoginFormChange={setLoginForm}
-              onFetchCaptcha={handleFetchCaptcha}
-              captcha={captcha}
-              onLogin={handleLogin}
             />
           )}
           {activeSection === 'config' && (
