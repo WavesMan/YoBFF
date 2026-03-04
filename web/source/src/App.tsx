@@ -24,7 +24,6 @@ import type {
   CDNStatus,
   Config,
   ConfigVersion,
-  DomainRule,
   HealthzResponse,
   LoginPayload,
   LogStats,
@@ -88,11 +87,6 @@ function App() {
     rollback: false,
   })
 
-  const breadcrumbs = useMemo(() => {
-    const current = menuItems.find((item) => item.key === activeSection)
-    return `控制台 / ${current?.label || '仪表盘'}`
-  }, [activeSection])
-
   const pageHeader = useMemo(() => {
     const headers: Record<string, { title: string; subtitle: string }> = {
       dashboard: {
@@ -125,6 +119,17 @@ function App() {
       subtitle: '沉浸式暗色风格，支持配置实时感知与审计流程',
     }
   }, [activeSection])
+
+  const notificationCount = useMemo(() => {
+    let count = 0
+    if (errorMessage) {
+      count += 1
+    }
+    if (statusMessage) {
+      count += 1
+    }
+    return count
+  }, [errorMessage, statusMessage])
 
   const diffCurrentJson = useMemo(() => JSON.stringify(config || normalizeConfig(null), null, 2), [config])
   const diffDraftJson = useMemo(() => JSON.stringify(configDraft, null, 2), [configDraft])
@@ -290,40 +295,6 @@ function App() {
     })
   }
 
-  const handleAddDomain = (rule: DomainRule) => {
-    const normalized = normalizeConfig(configDraft)
-    setConfigDraft({
-      ...normalized,
-      routing: {
-        ...normalized.routing,
-        domains: [...(normalized.routing?.domains || []), rule],
-      },
-    })
-  }
-
-  const handleUpdateDomain = (index: number, rule: DomainRule) => {
-    const normalized = normalizeConfig(configDraft)
-    const domains = normalized.routing?.domains || []
-    setConfigDraft({
-      ...normalized,
-      routing: {
-        ...normalized.routing,
-        domains: domains.map((item, idx) => (idx === index ? rule : item)),
-      },
-    })
-  }
-
-  const handleRemoveDomain = (index: number) => {
-    const normalized = normalizeConfig(configDraft)
-    const domains = normalized.routing?.domains || []
-    setConfigDraft({
-      ...normalized,
-      routing: {
-        ...normalized.routing,
-        domains: domains.filter((_, idx) => idx !== index),
-      },
-    })
-  }
 
   const handleOperatorChange = (value: string) => {
     setOperatorName(value)
@@ -632,7 +603,11 @@ function App() {
         onToggle={() => setSidebarCollapsed((prev) => !prev)}
       />
       <div className="content">
-        <TopBar breadcrumbs={breadcrumbs} token={token} onLogout={handleLogout} />
+        <TopBar
+          onLogout={handleLogout}
+          notificationCount={notificationCount}
+          isLoggedIn={Boolean(token)}
+        />
         <main className="main">
           <div>
             <h1 className="page-title">{pageHeader.title}</h1>
@@ -668,14 +643,11 @@ function App() {
           )}
           {activeSection === 'traffic' && (
             <TrafficSection
-              configDraft={configDraft}
-              onConfigChange={setConfigDraft}
-              onAddDomain={handleAddDomain}
-              onUpdateDomain={handleUpdateDomain}
-              onRemoveDomain={handleRemoveDomain}
-            />
-          )}
-          {activeSection === 'security' && (
+                token={token || ''}
+                operator={operatorName || 'unknown'}
+              />
+            )}
+            {activeSection === 'security' && (
             <SecuritySection
               configDraft={configDraft}
               cdnStatus={cdnStatus}

@@ -223,9 +223,9 @@ func (s *Server) routeSiteLog(w http.ResponseWriter, r *http.Request, siteID str
 	writeError(w, http.StatusNotFound, "not_found", "not found", r)
 }
 
-// siteDetail 读取或更新站点信息，用于站点元数据维护。
+// siteDetail 读取、更新或删除站点信息，用于站点元数据维护。
 // 参数：w 为响应写入器，r 为请求对象，siteID 为站点标识。
-// 返回：GET 返回站点信息，PUT 返回更新后的站点信息。
+// 返回：GET 返回站点信息，PUT 返回更新后的站点信息，DELETE 返回删除的站点信息。
 // 异常：站点不存在或请求非法时返回错误。
 func (s *Server) siteDetail(w http.ResponseWriter, r *http.Request, siteID string) {
 	if s.store == nil {
@@ -258,6 +258,17 @@ func (s *Server) siteDetail(w http.ResponseWriter, r *http.Request, siteID strin
 			return
 		}
 		_ = s.store.SaveAudit("site_update", site.ID, operatorFromRequest(r), map[string]any{
+			"hostname": site.Hostname,
+			"ip":       site.IP,
+		})
+		writeJSON(w, http.StatusOK, site)
+	case http.MethodDelete:
+		site, err := s.store.DeleteSite(siteID)
+		if err != nil {
+			writeSiteError(w, err, r)
+			return
+		}
+		_ = s.store.SaveAudit("site_delete", site.ID, operatorFromRequest(r), map[string]any{
 			"hostname": site.Hostname,
 			"ip":       site.IP,
 		})

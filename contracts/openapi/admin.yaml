@@ -557,6 +557,32 @@ paths:
           $ref: "#/components/responses/RateLimited"
         "503":
           $ref: "#/components/responses/AuthUnavailable"
+    delete:
+      summary: 删除站点
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/RequestID"
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/RateLimitLimit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/RateLimitRemaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/RateLimitReset"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Site"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/BadRequest"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/AuthUnavailable"
   /api/v1/sites/{site_id}/config:
     parameters:
       - in: path

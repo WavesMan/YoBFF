@@ -13,6 +13,12 @@ import type {
   LoginCaptchaRequirementResponse,
   LoginPayload,
   LoginResponse,
+  Site,
+  SiteCreateRequest,
+  SiteGroupResponse,
+  SiteListResponse,
+  SiteLogStream,
+  SiteUpdateRequest,
 } from './types'
 
 const API_BASE = '/admin/api/v1'
@@ -166,4 +172,74 @@ export async function fetchLoginCaptchaRequirement() {
 
 export async function logoutAdmin(token: string) {
   return apiRequest(`${API_BASE}/logout`, { method: 'POST' }, token)
+}
+
+export async function fetchSites(token: string, query?: { hostname?: string; ip?: string }) {
+  const params = new URLSearchParams()
+  if (query?.hostname) params.set('hostname', query.hostname)
+  if (query?.ip) params.set('ip', query.ip)
+  return apiRequest<SiteListResponse>(`${API_BASE}/sites?${params.toString()}`, {}, token)
+}
+
+export async function createSite(token: string, data: SiteCreateRequest) {
+  return apiRequest<Site>(`${API_BASE}/sites`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  }, token)
+}
+
+export async function fetchSite(token: string, id: string) {
+  return apiRequest<Site>(`${API_BASE}/sites/${id}`, {}, token)
+}
+
+export async function updateSite(token: string, id: string, data: SiteUpdateRequest) {
+  return apiRequest<Site>(`${API_BASE}/sites/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  }, token)
+}
+
+export async function deleteSite(token: string, id: string) {
+  return apiRequest(`${API_BASE}/sites/${id}`, {
+    method: 'DELETE',
+  }, token)
+}
+
+export async function fetchSiteConfig(token: string, id: string) {
+  return apiRequest<Config>(`${API_BASE}/sites/${id}/config`, {}, token)
+}
+
+export async function updateSiteConfig(token: string, id: string, config: Config, operator: string) {
+  return apiRequest<{ status: string }>(`${API_BASE}/sites/${id}/config`, {
+    method: 'PUT',
+    body: JSON.stringify(config),
+    headers: { 'X-Operator': operator },
+  }, token)
+}
+
+export async function fetchSiteVersions(token: string, id: string, limit = 20) {
+  return apiRequest<ConfigVersionResponse>(`${API_BASE}/sites/${id}/config/versions?limit=${limit}`, {}, token)
+}
+
+export async function rollbackSiteConfig(token: string, id: string, versionId: string, operator: string) {
+  return apiRequest<ConfigRollbackResponse>(`${API_BASE}/sites/${id}/config/rollback`, {
+    method: 'POST',
+    body: JSON.stringify({ version_id: versionId }),
+    headers: { 'X-Operator': operator },
+  }, token)
+}
+
+export async function fetchSiteGroups(token: string, by: 'hostname' | 'ip') {
+  return apiRequest<SiteGroupResponse>(`${API_BASE}/site-groups?by=${by}`, {}, token)
+}
+
+export async function fetchSiteLogStream(token: string, id: string) {
+  return apiRequest<SiteLogStream>(`${API_BASE}/sites/${id}/log/stream`, {}, token)
+}
+
+export async function updateSiteLogStream(token: string, id: string, filterQuery: string) {
+  return apiRequest<SiteLogStream>(`${API_BASE}/sites/${id}/log/stream`, {
+    method: 'PUT',
+    body: JSON.stringify({ site_id: id, filter_query: filterQuery }),
+  }, token)
 }

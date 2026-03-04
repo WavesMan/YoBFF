@@ -10,6 +10,20 @@ export default defineConfig({
       },
     }),
   ],
+  server: {
+    proxy: {
+      '/admin': {
+        target: 'https://localhost:8443',
+        changeOrigin: true,
+        secure: false,
+      },
+      '/healthz': {
+        target: 'https://localhost:8443',
+        changeOrigin: true,
+        secure: false,
+      },
+    },
+  },
   build: {
     outDir: '../ui',
     emptyOutDir: true,

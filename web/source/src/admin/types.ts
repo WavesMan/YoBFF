@@ -64,6 +64,12 @@ export type CDNStatus = {
   error?: string
 }
 
+export type RateLimitConfig = {
+  enabled?: boolean
+  requestsPerSecond?: number
+  burst?: number
+}
+
 export type Config = {
   dataPlane?: {
     httpListenAddr?: string
@@ -80,6 +86,7 @@ export type Config = {
   }
   security?: SecurityConfig
   routing?: RoutingConfig
+  rateLimit?: RateLimitConfig
   certificates?: Certificate[]
   cdnSync?: CDNSyncConfig
 }
@@ -101,9 +108,46 @@ export type ValidationIssue = {
   message: string
 }
 
-export type ConfigValidationResponse = {
-  valid: boolean
-  errors: ValidationIssue[]
+export type Site = {
+  id: string
+  name: string
+  hostname: string
+  ip: string
+  created_at?: string
+  updated_at?: string
+}
+
+export type SiteCreateRequest = {
+  name: string
+  hostname: string
+  ip: string
+}
+
+export type SiteUpdateRequest = {
+  name?: string
+  hostname?: string
+  ip?: string
+}
+
+export type SiteListResponse = {
+  items: Site[]
+}
+
+export type SiteSummary = {
+  id: string
+  name: string
+  hostname: string
+  ip: string
+}
+
+export type SiteGroup = {
+  group_key: string
+  count: number
+  sites: SiteSummary[]
+}
+
+export type SiteGroupResponse = {
+  groups: SiteGroup[]
 }
 
 export type ConfigVersion = {
@@ -122,8 +166,19 @@ export type ConfigRollbackPayload = {
 }
 
 export type ConfigRollbackResponse = {
-  status?: string
-  version_id?: string
+  status: string
+  version_id: string
+}
+
+export type SiteLogStream = {
+  site_id: string
+  filter_query: string
+  updated_at?: string
+}
+
+export type ConfigValidationResponse = {
+  valid: boolean
+  errors: ValidationIssue[]
 }
 
 export type LoginPayload = {

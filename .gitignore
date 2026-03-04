@@ -18,5 +18,10 @@ feature-docs/
 # go test
 coverage.out
 
+# database
+config/*.db
+config/*.db-shm
+config/*.db-wal
+
 # frontend
 web/ui

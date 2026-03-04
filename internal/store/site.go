@@ -109,6 +109,45 @@ func (s *Store) UpdateSite(siteID string, payload Site) (Site, error) {
 	return current, nil
 }
 
+// DeleteSite 删除站点及其关联记录，用于站点下线与清理历史配置。
+// 参数：siteID 为站点标识。
+// 返回：被删除的站点记录。
+// 异常：站点不存在或数据库异常时返回错误。
+func (s *Store) DeleteSite(siteID string) (Site, error) {
+	if s == nil || s.db == nil {
+		return Site{}, errors.New("db not ready")
+	}
+	if siteID == "" {
+		return Site{}, errors.New("site id is empty")
+	}
+	site, err := s.GetSite(siteID)
+	if err != nil {
+		return Site{}, err
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return Site{}, err
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		}
+	}()
+	if _, err = tx.Exec(`DELETE FROM site_versions WHERE site_id = ?`, siteID); err != nil {
+		return Site{}, err
+	}
+	if _, err = tx.Exec(`DELETE FROM site_log_streams WHERE site_id = ?`, siteID); err != nil {
+		return Site{}, err
+	}
+	if _, err = tx.Exec(`DELETE FROM sites WHERE id = ?`, siteID); err != nil {
+		return Site{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return Site{}, err
+	}
+	return site, nil
+}
+
 // GetSite 查询站点详情，用于站点级管理与配置入口定位。
 // 参数：siteID 为站点标识。
 // 返回：站点记录。
