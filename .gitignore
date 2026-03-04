@@ -17,3 +17,7 @@ feature-docs/
 
 # go test
 coverage.out
+
+
+# frontend
+web/ui

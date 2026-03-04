@@ -15,6 +15,7 @@ func TestBuildRootHandler_AdminRedirect(t *testing.T) {
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			t.Fatalf("不应走控制面: %s", r.URL.Path)
 		}),
+		nil,
 	)
 
 	req := httptest.NewRequest(http.MethodGet, "http://example.com/admin", nil)
@@ -39,7 +40,7 @@ func TestBuildRootHandler_RouteToAdminWithStripPrefix(t *testing.T) {
 	dataHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Fatalf("不应走数据面: %s", r.URL.Path)
 	})
-	handler := BuildRootHandler(dataHandler, adminHandler)
+	handler := BuildRootHandler(dataHandler, adminHandler, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "http://example.com/admin/api/v1/config", nil)
 	rec := httptest.NewRecorder()
@@ -59,7 +60,7 @@ func TestBuildRootHandler_HealthzGoesToAdminWithoutStripPrefix(t *testing.T) {
 		gotPath = r.URL.Path
 		w.WriteHeader(http.StatusOK)
 	})
-	handler := BuildRootHandler(http.NotFoundHandler(), adminHandler)
+	handler := BuildRootHandler(http.NotFoundHandler(), adminHandler, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "http://example.com/healthz", nil)
 	rec := httptest.NewRecorder()
@@ -74,7 +75,7 @@ func TestBuildRootHandler_HealthzGoesToAdminWithoutStripPrefix(t *testing.T) {
 }
 
 func TestBuildRootHandler_RootReturnsOKJSON(t *testing.T) {
-	handler := BuildRootHandler(http.NotFoundHandler(), http.NotFoundHandler())
+	handler := BuildRootHandler(http.NotFoundHandler(), http.NotFoundHandler(), nil)
 
 	req := httptest.NewRequest(http.MethodGet, "http://example.com/", nil)
 	rec := httptest.NewRecorder()
@@ -95,7 +96,7 @@ func TestBuildRootHandler_RootReturnsOKJSON(t *testing.T) {
 }
 
 func TestBuildRootHandler_FaviconReturnsNoContent(t *testing.T) {
-	handler := BuildRootHandler(http.NotFoundHandler(), http.NotFoundHandler())
+	handler := BuildRootHandler(http.NotFoundHandler(), http.NotFoundHandler(), nil)
 
 	req := httptest.NewRequest(http.MethodGet, "http://example.com/favicon.ico", nil)
 	rec := httptest.NewRecorder()
@@ -112,10 +113,13 @@ func TestBuildRootHandler_DefaultGoesToDataPlane(t *testing.T) {
 		dataHit = true
 		w.WriteHeader(http.StatusOK)
 	})
+	uiHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Fatalf("不应走 UI: %s", r.URL.Path)
+	})
 	adminHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Fatalf("不应走控制面: %s", r.URL.Path)
 	})
-	handler := BuildRootHandler(dataHandler, adminHandler)
+	handler := BuildRootHandler(dataHandler, adminHandler, uiHandler)
 
 	req := httptest.NewRequest(http.MethodGet, "http://example.com/some-path", nil)
 	rec := httptest.NewRecorder()
@@ -126,5 +130,26 @@ func TestBuildRootHandler_DefaultGoesToDataPlane(t *testing.T) {
 	}
 	if !dataHit {
 		t.Fatalf("数据面未命中")
+	}
+}
+
+func TestBuildRootHandler_RootGoesToUI(t *testing.T) {
+	var uiHit bool
+	uiHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		uiHit = true
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ui"))
+	})
+	handler := BuildRootHandler(http.NotFoundHandler(), http.NotFoundHandler(), uiHandler)
+
+	req := httptest.NewRequest(http.MethodGet, "http://example.com/", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Result().StatusCode != http.StatusOK {
+		t.Fatalf("状态码不匹配: got=%d", rec.Result().StatusCode)
+	}
+	if !uiHit {
+		t.Fatalf("UI 未命中")
 	}
 }

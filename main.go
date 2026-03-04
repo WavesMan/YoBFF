@@ -3,11 +3,14 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"embed"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"YoBFF/internal/admin"
@@ -20,6 +23,9 @@ import (
 
 	"go.uber.org/zap"
 )
+
+//go:embed web/ui/* web/ui/assets/* web/ui/vite.svg
+var embeddedUI embed.FS
 
 type serverStarter interface {
 	ListenAndServe(srv *http.Server) error
@@ -112,7 +118,12 @@ func run(
 
 	dataHandler := gateway.NewHandler(manager, logPipeline)
 	adminSrv := admin.NewServer(manager, logRuntime, logPipeline)
-	rootHandler := app.BuildRootHandler(dataHandler, adminSrv.Handler())
+	uiHandler, err := buildUIHandler()
+	if err != nil {
+		return fmt.Errorf("初始化管理端静态资源失败: %w", err)
+	}
+	uiHandler = adminSrv.WrapHandler(uiHandler)
+	rootHandler := app.BuildRootHandler(dataHandler, adminSrv.Handler(), uiHandler)
 
 	reloadInterval := config.EnvDurationSeconds("CONFIG_RELOAD_INTERVAL_SECONDS", 3)
 	watcher, err := config.NewWatcher(manager, logger, reloadInterval)
@@ -207,6 +218,18 @@ func run(
 		shutdownServer(shutdownCtx, logger, "HTTPS 服务", httpsSrv)
 	}
 	return nil
+}
+
+func buildUIHandler() (http.Handler, error) {
+	dir := strings.TrimSpace(os.Getenv("ADMIN_UI_DIR"))
+	if dir != "" {
+		return app.NewUIHandler(os.DirFS(dir))
+	}
+	sub, err := fs.Sub(embeddedUI, "web/ui")
+	if err != nil {
+		return nil, err
+	}
+	return app.NewUIHandler(sub)
 }
 
 // shutdownServer 统一执行服务优雅关闭并记录结果日志。

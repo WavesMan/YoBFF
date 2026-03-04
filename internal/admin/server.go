@@ -65,6 +65,13 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("/api/v1/log/stats", withAuth(http.HandlerFunc(s.logStats), s.manager))
 
 	handler := http.Handler(mux)
+	return s.WrapHandler(handler)
+}
+
+func (s *Server) WrapHandler(handler http.Handler) http.Handler {
+	if handler == nil {
+		return http.NotFoundHandler()
+	}
 	handler = withRateLimit(handler, s.limiter)
 	handler = withRequestID(handler)
 	return handler
