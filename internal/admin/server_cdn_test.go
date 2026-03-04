@@ -52,7 +52,7 @@ func TestServer_CDNConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	pipeline := logging.NewPipeline(100, logger.Logger())
-	server := NewServer(manager, logger, pipeline)
+	server := NewServer(manager, logger, pipeline, nil)
 	handler := server.Handler()
 
 	// 4. Test GET /api/v1/config/cdn

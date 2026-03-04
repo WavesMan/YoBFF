@@ -116,6 +116,11 @@ func (m *Manager) Apply(cfg Config) error {
 	return nil
 }
 
+func (m *Manager) Validate(cfg Config) []ValidationIssue {
+	filled := fillDefaults(cfg)
+	return ValidateConfig(filled, m.path)
+}
+
 // UpdateProviderStatus 更新特定 CDN 提供商的 IP 列表并重构快照。
 // 参数：provider 为提供商名称，cidrs 为新的 IP 列表，syncErr 为同步错误信息（如果有）。
 // 返回：更新失败错误。

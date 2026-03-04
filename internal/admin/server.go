@@ -16,6 +16,7 @@ import (
 
 	"YoBFF/internal/config"
 	"YoBFF/internal/logging"
+	"YoBFF/internal/store"
 )
 
 // Server 封装控制平面管理接口依赖。
@@ -26,13 +27,14 @@ type Server struct {
 	limiter  *rateLimiter
 	captcha  captchaService
 	guard    *loginGuard
+	store    *store.Store
 }
 
 // NewServer 创建控制平面 HTTP 服务实例。
 // 参数：manager 为配置管理器，runtime 为日志运行时，pipeline 为异步日志管线。
 // 返回：可注册路由的服务对象。
 // 异常：无。
-func NewServer(manager *config.Manager, runtime *logging.Runtime, pipeline *logging.Pipeline) *Server {
+func NewServer(manager *config.Manager, runtime *logging.Runtime, pipeline *logging.Pipeline, store *store.Store) *Server {
 	limitValue := parsePositiveInt(config.EnvOrDefault("ADMIN_RATE_LIMIT_PER_MIN", "60"), 60)
 	limiter := newRateLimiter(limitValue, time.Minute)
 	captcha, _ := newBase64CaptchaService()
@@ -44,6 +46,7 @@ func NewServer(manager *config.Manager, runtime *logging.Runtime, pipeline *logg
 		limiter:  limiter,
 		captcha:  captcha,
 		guard:    guard,
+		store:    store,
 	}
 }
 
@@ -61,7 +64,10 @@ func (s *Server) Handler() http.Handler {
 
 	// 受保护的接口
 	mux.Handle("/api/v1/config", withAuth(http.HandlerFunc(s.config), s.manager))
+	mux.Handle("/api/v1/config/validate", withAuth(http.HandlerFunc(s.validateConfig), s.manager))
 	mux.Handle("/api/v1/config/cdn", withAuth(http.HandlerFunc(s.cdnConfig), s.manager))
+	mux.Handle("/api/v1/config/versions", withAuth(http.HandlerFunc(s.configVersions), s.manager))
+	mux.Handle("/api/v1/config/rollback", withAuth(http.HandlerFunc(s.rollbackConfig), s.manager))
 	mux.Handle("/api/v1/config/reload", withAuth(http.HandlerFunc(s.reload), s.manager))
 	mux.Handle("/api/v1/log/level", withAuth(http.HandlerFunc(s.logLevel), s.manager))
 	mux.Handle("/api/v1/log/stats", withAuth(http.HandlerFunc(s.logStats), s.manager))
@@ -109,9 +115,24 @@ func (s *Server) config(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "invalid_request", err.Error(), r)
 			return
 		}
+		issues := s.manager.Validate(cfg)
+		if len(issues) > 0 {
+			writeValidationError(w, http.StatusBadRequest, "config_invalid", "config validation failed", issues, r)
+			return
+		}
 		if err := s.manager.Apply(cfg); err != nil {
 			writeError(w, http.StatusBadRequest, "config_apply_failed", err.Error(), r)
 			return
+		}
+		if s.store != nil {
+			version, err := s.store.SaveVersion(cfg, operatorFromRequest(r), "update")
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "config_version_failed", err.Error(), r)
+				return
+			}
+			_ = s.store.SaveAudit("config_update", version.ID, operatorFromRequest(r), map[string]any{
+				"source": "update",
+			})
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
 			"status": "updated",
@@ -119,6 +140,96 @@ func (s *Server) config(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed", r)
 	}
+}
+
+func (s *Server) validateConfig(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed", r)
+		return
+	}
+	var cfg config.Config
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 2<<20))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&cfg); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", err.Error(), r)
+		return
+	}
+	issues := s.manager.Validate(cfg)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"valid":  len(issues) == 0,
+		"errors": issues,
+	})
+}
+
+func (s *Server) configVersions(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed", r)
+		return
+	}
+	if s.store == nil {
+		writeError(w, http.StatusServiceUnavailable, "store_unavailable", "config store unavailable", r)
+		return
+	}
+	limit := parsePositiveInt(r.URL.Query().Get("limit"), 20)
+	items, err := s.store.ListVersions(limit)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "store_query_failed", err.Error(), r)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"items": items,
+	})
+}
+
+func (s *Server) rollbackConfig(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed", r)
+		return
+	}
+	if s.store == nil {
+		writeError(w, http.StatusServiceUnavailable, "store_unavailable", "config store unavailable", r)
+		return
+	}
+	var payload struct {
+		VersionID string `json:"version_id"`
+	}
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&payload); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", err.Error(), r)
+		return
+	}
+	if payload.VersionID == "" {
+		writeError(w, http.StatusBadRequest, "invalid_request", "version_id is required", r)
+		return
+	}
+	cfg, err := s.store.GetVersionConfig(payload.VersionID)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "version_not_found", err.Error(), r)
+		return
+	}
+	issues := s.manager.Validate(cfg)
+	if len(issues) > 0 {
+		writeValidationError(w, http.StatusBadRequest, "config_invalid", "config validation failed", issues, r)
+		return
+	}
+	if err := s.manager.Apply(cfg); err != nil {
+		writeError(w, http.StatusBadRequest, "config_apply_failed", err.Error(), r)
+		return
+	}
+	version, err := s.store.SaveVersion(cfg, operatorFromRequest(r), "rollback")
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "config_version_failed", err.Error(), r)
+		return
+	}
+	_ = s.store.SaveAudit("config_rollback", version.ID, operatorFromRequest(r), map[string]any{
+		"source":    "rollback",
+		"origin_id": payload.VersionID,
+	})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"status":     "rolled_back",
+		"version_id": payload.VersionID,
+	})
 }
 
 // cdnConfig 提供 CDN 同步配置的管理与状态查询。
@@ -249,6 +360,13 @@ type errorResponse struct {
 	RequestID string `json:"request_id"`
 }
 
+type validationErrorResponse struct {
+	ErrorCode string                   `json:"error_code"`
+	Message   string                   `json:"message"`
+	RequestID string                   `json:"request_id"`
+	Errors    []config.ValidationIssue `json:"errors"`
+}
+
 // writeError 统一输出错误响应结构并补齐请求追踪信息。
 // 参数：w 为响应写入器，status 为 HTTP 状态码，code 为错误码，message 为错误描述，r 为请求对象。
 // 返回：无。
@@ -263,6 +381,20 @@ func writeError(w http.ResponseWriter, status int, code string, message string, 
 		ErrorCode: code,
 		Message:   message,
 		RequestID: requestID,
+	})
+}
+
+func writeValidationError(w http.ResponseWriter, status int, code string, message string, issues []config.ValidationIssue, r *http.Request) {
+	requestID := requestIDFromContext(r.Context())
+	if requestID == "" {
+		requestID = newRequestID()
+		w.Header().Set("X-Request-ID", requestID)
+	}
+	writeJSON(w, status, validationErrorResponse{
+		ErrorCode: code,
+		Message:   message,
+		RequestID: requestID,
+		Errors:    issues,
 	})
 }
 
@@ -312,6 +444,14 @@ func newRequestID() string {
 		return strconv.FormatInt(time.Now().UnixNano(), 10)
 	}
 	return hex.EncodeToString(buffer)
+}
+
+func operatorFromRequest(r *http.Request) string {
+	operator := strings.TrimSpace(r.Header.Get("X-Operator"))
+	if operator == "" {
+		return "unknown"
+	}
+	return operator
 }
 
 // withAuth 对控制面请求执行 Bearer Token 鉴权。

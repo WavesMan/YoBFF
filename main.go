@@ -18,6 +18,7 @@ import (
 	"YoBFF/internal/config"
 	"YoBFF/internal/gateway"
 	"YoBFF/internal/logging"
+	"YoBFF/internal/store"
 	"YoBFF/internal/syncer"
 	"YoBFF/internal/tlsutil"
 
@@ -117,7 +118,12 @@ func run(
 	defer logPipeline.Close()
 
 	dataHandler := gateway.NewHandler(manager, logPipeline)
-	adminSrv := admin.NewServer(manager, logRuntime, logPipeline)
+	dbPath := config.EnvOrDefault("CONFIG_DB_PATH", "config/config.db")
+	configStore, err := store.NewSQLiteStore(dbPath)
+	if err != nil {
+		return fmt.Errorf("初始化配置存储失败: %w", err)
+	}
+	adminSrv := admin.NewServer(manager, logRuntime, logPipeline, configStore)
 	uiHandler, err := buildUIHandler()
 	if err != nil {
 		return fmt.Errorf("初始化管理端静态资源失败: %w", err)

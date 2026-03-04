@@ -3,6 +3,10 @@ import type {
   CaptchaResponse,
   CdnConfigResponse,
   Config,
+  ConfigRollbackPayload,
+  ConfigRollbackResponse,
+  ConfigValidationResponse,
+  ConfigVersionResponse,
   HealthzResponse,
   LogLevelResponse,
   LogStats,
@@ -103,15 +107,42 @@ export async function fetchConfig(token: string) {
   return apiRequest<Config>(`${API_BASE}/config`, {}, token)
 }
 
-export async function applyConfig(token: string, config: Config) {
+export async function applyConfig(token: string, config: Config, operator: string) {
   return apiRequest(`${API_BASE}/config`, {
     method: 'PUT',
     body: JSON.stringify(config),
+    headers: {
+      'X-Operator': operator,
+    },
   }, token)
 }
 
 export async function reloadConfig(token: string) {
   return apiRequest(`${API_BASE}/config/reload`, { method: 'POST' }, token)
+}
+
+export async function validateConfig(token: string, config: Config, operator: string) {
+  return apiRequest<ConfigValidationResponse>(`${API_BASE}/config/validate`, {
+    method: 'POST',
+    body: JSON.stringify(config),
+    headers: {
+      'X-Operator': operator,
+    },
+  }, token)
+}
+
+export async function fetchConfigVersions(token: string, limit = 20) {
+  return apiRequest<ConfigVersionResponse>(`${API_BASE}/config/versions?limit=${limit}`, {}, token)
+}
+
+export async function rollbackConfig(token: string, payload: ConfigRollbackPayload, operator: string) {
+  return apiRequest<ConfigRollbackResponse>(`${API_BASE}/config/rollback`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+    headers: {
+      'X-Operator': operator,
+    },
+  }, token)
 }
 
 export async function fetchCdnConfig(token: string) {

@@ -93,6 +93,37 @@ export type ApiError = {
   error_code?: string
   message?: string
   request_id?: string
+  errors?: ValidationIssue[]
+}
+
+export type ValidationIssue = {
+  path: string
+  message: string
+}
+
+export type ConfigValidationResponse = {
+  valid: boolean
+  errors: ValidationIssue[]
+}
+
+export type ConfigVersion = {
+  id: string
+  created_at: string
+  operator?: string
+  source?: string
+}
+
+export type ConfigVersionResponse = {
+  items: ConfigVersion[]
+}
+
+export type ConfigRollbackPayload = {
+  version_id: string
+}
+
+export type ConfigRollbackResponse = {
+  status?: string
+  version_id?: string
 }
 
 export type LoginPayload = {

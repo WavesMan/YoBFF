@@ -185,6 +185,13 @@ paths:
           $ref: "#/components/responses/AuthUnavailable"
     put:
       summary: 更新并应用配置
+      parameters:
+        - in: header
+          name: X-Operator
+          schema:
+            type: string
+          required: false
+          description: 操作人标识
       requestBody:
         required: true
         content:
@@ -212,11 +219,91 @@ paths:
                     type: string
                     example: updated
         "400":
-          $ref: "#/components/responses/BadRequest"
+          $ref: "#/components/responses/ValidationFailed"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "429":
           $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/AuthUnavailable"
+  /api/v1/config/validate:
+    post:
+      summary: 预检配置合法性
+      parameters:
+        - in: header
+          name: X-Operator
+          schema:
+            type: string
+          required: false
+          description: 操作人标识
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Config"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigValidationResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "503":
+          $ref: "#/components/responses/AuthUnavailable"
+  /api/v1/config/versions:
+    get:
+      summary: 查询配置版本列表
+      parameters:
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            format: int32
+            default: 20
+          required: false
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigVersionResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "503":
+          $ref: "#/components/responses/AuthUnavailable"
+  /api/v1/config/rollback:
+    post:
+      summary: 回滚到历史配置版本
+      parameters:
+        - in: header
+          name: X-Operator
+          schema:
+            type: string
+          required: false
+          description: 操作人标识
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfigRollbackRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfigRollbackResponse"
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "503":
           $ref: "#/components/responses/AuthUnavailable"
   /api/v1/config/cdn:
@@ -451,6 +538,12 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/ErrorResponse"
+    ValidationFailed:
+      description: 配置预检失败
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ValidationErrorResponse"
   schemas:
     ErrorResponse:
       type: object
@@ -464,6 +557,85 @@ components:
         message:
           type: string
         request_id:
+          type: string
+    ValidationIssue:
+      type: object
+      required:
+        - path
+        - message
+      properties:
+        path:
+          type: string
+        message:
+          type: string
+    ValidationErrorResponse:
+      type: object
+      required:
+        - error_code
+        - message
+        - request_id
+        - errors
+      properties:
+        error_code:
+          type: string
+          example: config_invalid
+        message:
+          type: string
+        request_id:
+          type: string
+        errors:
+          type: array
+          items:
+            $ref: "#/components/schemas/ValidationIssue"
+    ConfigValidationResponse:
+      type: object
+      required:
+        - valid
+        - errors
+      properties:
+        valid:
+          type: boolean
+        errors:
+          type: array
+          items:
+            $ref: "#/components/schemas/ValidationIssue"
+    ConfigVersion:
+      type: object
+      required:
+        - id
+        - created_at
+      properties:
+        id:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        operator:
+          type: string
+        source:
+          type: string
+    ConfigVersionResponse:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ConfigVersion"
+    ConfigRollbackRequest:
+      type: object
+      required:
+        - version_id
+      properties:
+        version_id:
+          type: string
+    ConfigRollbackResponse:
+      type: object
+      properties:
+        status:
+          type: string
+        version_id:
           type: string
     Config:
       type: object

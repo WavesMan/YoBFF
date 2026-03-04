@@ -68,7 +68,7 @@ func TestLogin_CaptchaAfterFirstFailure(t *testing.T) {
 	pipeline := logging.NewPipeline(16, zap.NewNop())
 	defer pipeline.Close()
 
-	srv := NewServer(manager, runtime, pipeline)
+	srv := NewServer(manager, runtime, pipeline, nil)
 	srv.captcha = &fakeCaptchaService{}
 	srv.guard = newLoginGuard(time.Hour)
 	handler := srv.Handler()
@@ -144,7 +144,7 @@ func TestLogin_InvalidCaptcha(t *testing.T) {
 	pipeline := logging.NewPipeline(16, zap.NewNop())
 	defer pipeline.Close()
 
-	srv := NewServer(manager, runtime, pipeline)
+	srv := NewServer(manager, runtime, pipeline, nil)
 	srv.captcha = &fakeCaptchaService{}
 	srv.guard = newLoginGuard(time.Hour)
 	handler := srv.Handler()
@@ -199,7 +199,7 @@ func TestCaptcha_PresetEcho(t *testing.T) {
 	pipeline := logging.NewPipeline(16, zap.NewNop())
 	defer pipeline.Close()
 
-	srv := NewServer(manager, runtime, pipeline)
+	srv := NewServer(manager, runtime, pipeline, nil)
 	srv.captcha = &fakeCaptchaService{}
 	handler := srv.Handler()
 

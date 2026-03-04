@@ -77,6 +77,11 @@ type Certificate struct {
 	KeyFile  string `json:"keyFile"`
 }
 
+type ValidationIssue struct {
+	Path    string `json:"path"`
+	Message string `json:"message"`
+}
+
 // defaultConfig 返回系统级默认配置。
 // 参数：无。
 // 返回：可直接运行的默认配置对象。

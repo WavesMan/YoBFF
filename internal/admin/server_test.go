@@ -219,7 +219,7 @@ func TestServerHandler_HealthzOK(t *testing.T) {
 	pipeline := logging.NewPipeline(16, zap.NewNop())
 	defer pipeline.Close()
 
-	srv := NewServer(manager, logRuntime, pipeline)
+	srv := NewServer(manager, logRuntime, pipeline, nil)
 	handler := srv.Handler()
 
 	req := httptest.NewRequest(http.MethodGet, "http://example.com/healthz", nil)
@@ -252,7 +252,7 @@ func TestServerHandler_ConfigGetPut(t *testing.T) {
 	pipeline := logging.NewPipeline(16, zap.NewNop())
 	defer pipeline.Close()
 
-	srv := NewServer(manager, logRuntime, pipeline)
+	srv := NewServer(manager, logRuntime, pipeline, nil)
 	handler := srv.Handler()
 
 	getReq := httptest.NewRequest(http.MethodGet, "http://example.com/api/v1/config", nil)
@@ -302,7 +302,7 @@ func TestServerHandler_Reload(t *testing.T) {
 	pipeline := logging.NewPipeline(16, zap.NewNop())
 	defer pipeline.Close()
 
-	srv := NewServer(manager, logRuntime, pipeline)
+	srv := NewServer(manager, logRuntime, pipeline, nil)
 	handler := srv.Handler()
 
 	cfgV2 := `{
@@ -345,7 +345,7 @@ func TestServerHandler_LogLevelAndStats(t *testing.T) {
 	defer pipeline.Close()
 	pipeline.Emit(logging.Event{Level: "info", Type: "proxy"})
 
-	srv := NewServer(manager, logRuntime, pipeline)
+	srv := NewServer(manager, logRuntime, pipeline, nil)
 	handler := srv.Handler()
 
 	levelReq := httptest.NewRequest(http.MethodGet, "http://example.com/api/v1/log/level", nil)
@@ -394,7 +394,7 @@ func TestServerHandler_RateLimitOnHandler(t *testing.T) {
 	pipeline := logging.NewPipeline(16, zap.NewNop())
 	defer pipeline.Close()
 
-	srv := NewServer(manager, logRuntime, pipeline)
+	srv := NewServer(manager, logRuntime, pipeline, nil)
 	handler := srv.Handler()
 
 	doRequest := func() int {
@@ -430,7 +430,7 @@ func TestServerHandler_Config_MethodNotAllowed(t *testing.T) {
 	pipeline := logging.NewPipeline(16, zap.NewNop())
 	defer pipeline.Close()
 
-	srv := NewServer(manager, logRuntime, pipeline)
+	srv := NewServer(manager, logRuntime, pipeline, nil)
 	handler := srv.Handler()
 
 	req := httptest.NewRequest(http.MethodPost, "http://example.com/api/v1/config", nil)
@@ -462,7 +462,7 @@ func TestServerHandler_Config_InvalidRequest(t *testing.T) {
 	pipeline := logging.NewPipeline(16, zap.NewNop())
 	defer pipeline.Close()
 
-	srv := NewServer(manager, logRuntime, pipeline)
+	srv := NewServer(manager, logRuntime, pipeline, nil)
 	handler := srv.Handler()
 
 	req := httptest.NewRequest(http.MethodPut, "http://example.com/api/v1/config", bytes.NewReader([]byte(`{"unknown":1}`)))
@@ -494,7 +494,7 @@ func TestServerHandler_Config_ApplyFailed(t *testing.T) {
 	pipeline := logging.NewPipeline(16, zap.NewNop())
 	defer pipeline.Close()
 
-	srv := NewServer(manager, logRuntime, pipeline)
+	srv := NewServer(manager, logRuntime, pipeline, nil)
 	handler := srv.Handler()
 
 	body := []byte(`{"security":{"allowedCidrs":["not-a-cidr"],"blockPageHtml":"<html/>"},"routing":{"defaultUpstream":"http://127.0.0.1:18080"}}`)
@@ -527,7 +527,7 @@ func TestServerHandler_Reload_MethodNotAllowed(t *testing.T) {
 	pipeline := logging.NewPipeline(16, zap.NewNop())
 	defer pipeline.Close()
 
-	srv := NewServer(manager, logRuntime, pipeline)
+	srv := NewServer(manager, logRuntime, pipeline, nil)
 	handler := srv.Handler()
 
 	req := httptest.NewRequest(http.MethodGet, "http://example.com/api/v1/config/reload", nil)
@@ -554,7 +554,7 @@ func TestServerHandler_Reload_Failed(t *testing.T) {
 	pipeline := logging.NewPipeline(16, zap.NewNop())
 	defer pipeline.Close()
 
-	srv := NewServer(manager, logRuntime, pipeline)
+	srv := NewServer(manager, logRuntime, pipeline, nil)
 	handler := srv.Handler()
 
 	if err = os.WriteFile(manager.ConfigPath(), []byte(`{invalid json`), 0o600); err != nil {
@@ -586,7 +586,7 @@ func TestServerHandler_LogLevel_RuntimeUnavailable(t *testing.T) {
 	pipeline := logging.NewPipeline(16, zap.NewNop())
 	defer pipeline.Close()
 
-	srv := NewServer(manager, nil, pipeline)
+	srv := NewServer(manager, nil, pipeline, nil)
 	handler := srv.Handler()
 
 	req := httptest.NewRequest(http.MethodGet, "http://example.com/api/v1/log/level", nil)
@@ -620,7 +620,7 @@ func TestServerHandler_LogLevel_InvalidRequest(t *testing.T) {
 	pipeline := logging.NewPipeline(16, zap.NewNop())
 	defer pipeline.Close()
 
-	srv := NewServer(manager, logRuntime, pipeline)
+	srv := NewServer(manager, logRuntime, pipeline, nil)
 	handler := srv.Handler()
 
 	req := httptest.NewRequest(http.MethodPut, "http://example.com/api/v1/log/level", bytes.NewReader([]byte(`{"unknown":1}`)))
@@ -654,7 +654,7 @@ func TestServerHandler_LogLevel_InvalidValue(t *testing.T) {
 	pipeline := logging.NewPipeline(16, zap.NewNop())
 	defer pipeline.Close()
 
-	srv := NewServer(manager, logRuntime, pipeline)
+	srv := NewServer(manager, logRuntime, pipeline, nil)
 	handler := srv.Handler()
 
 	req := httptest.NewRequest(http.MethodPut, "http://example.com/api/v1/log/level", bytes.NewReader([]byte(`{"level":"nope"}`)))
@@ -688,7 +688,7 @@ func TestServerHandler_LogLevel_MethodNotAllowed(t *testing.T) {
 	pipeline := logging.NewPipeline(16, zap.NewNop())
 	defer pipeline.Close()
 
-	srv := NewServer(manager, logRuntime, pipeline)
+	srv := NewServer(manager, logRuntime, pipeline, nil)
 	handler := srv.Handler()
 
 	req := httptest.NewRequest(http.MethodPost, "http://example.com/api/v1/log/level", nil)
@@ -715,7 +715,7 @@ func TestServerHandler_LogStats_MethodNotAllowed(t *testing.T) {
 	pipeline := logging.NewPipeline(16, zap.NewNop())
 	defer pipeline.Close()
 
-	srv := NewServer(manager, logRuntime, pipeline)
+	srv := NewServer(manager, logRuntime, pipeline, nil)
 	handler := srv.Handler()
 
 	req := httptest.NewRequest(http.MethodPost, "http://example.com/api/v1/log/stats", nil)
@@ -740,7 +740,7 @@ func TestServerHandler_LogStats_PipelineUnavailable(t *testing.T) {
 		t.Fatalf("初始化日志运行时失败: %v", err)
 	}
 
-	srv := NewServer(manager, logRuntime, nil)
+	srv := NewServer(manager, logRuntime, nil, nil)
 	handler := srv.Handler()
 
 	req := httptest.NewRequest(http.MethodGet, "http://example.com/api/v1/log/stats", nil)

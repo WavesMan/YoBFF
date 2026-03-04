@@ -6,24 +6,29 @@ import {
   fetchCaptcha,
   fetchCdnConfig,
   fetchConfig,
+  fetchConfigVersions,
   fetchHealthz,
   fetchLoginCaptchaRequirement,
   fetchLogLevel,
   fetchLogStats,
   loginAdmin,
+  rollbackConfig as rollbackConfigRequest,
   logoutAdmin,
   normalizeConfig,
   reloadConfig as reloadConfigRequest,
   updateLogLevel as updateLogLevelRequest,
+  validateConfig as validateConfigRequest,
 } from './admin/api'
 import type {
   CaptchaResponse,
   CDNStatus,
   Config,
+  ConfigVersion,
   DomainRule,
   HealthzResponse,
   LoginPayload,
   LogStats,
+  ValidationIssue,
 } from './admin/types'
 import { Sidebar } from './components/Sidebar'
 import { TopBar } from './components/TopBar'
@@ -52,6 +57,11 @@ function App() {
   const [logLevel, setLogLevel] = useState('info')
   const [config, setConfig] = useState<Config | null>(null)
   const [configDraft, setConfigDraft] = useState<Config>(normalizeConfig(null))
+  const [configView, setConfigView] = useState<'apply' | 'dry-run' | 'rollback'>('apply')
+  const [configVersions, setConfigVersions] = useState<ConfigVersion[]>([])
+  const [versionsAutoLoaded, setVersionsAutoLoaded] = useState(false)
+  const [validationIssues, setValidationIssues] = useState<ValidationIssue[]>([])
+  const [validationTime, setValidationTime] = useState('')
   const [cdnStatus, setCdnStatus] = useState<Record<string, CDNStatus>>({})
   const [captcha, setCaptcha] = useState<CaptchaResponse | null>(null)
   const [captchaRequired, setCaptchaRequired] = useState(false)
@@ -63,6 +73,7 @@ function App() {
   })
   const [advancedMode, setAdvancedMode] = useState(false)
   const [jsonDraft, setJsonDraft] = useState('')
+  const [operatorName, setOperatorName] = useState(() => localStorage.getItem('yobff_operator') || '')
   const [statusMessage, setStatusMessage] = useState('')
   const [errorMessage, setErrorMessage] = useState('')
   const [loading, setLoading] = useState({
@@ -71,7 +82,10 @@ function App() {
     config: false,
     logLevel: false,
     applying: false,
+    validating: false,
     reload: false,
+    versions: false,
+    rollback: false,
   })
 
   const breadcrumbs = useMemo(() => {
@@ -103,7 +117,7 @@ function App() {
       },
       config: {
         title: '配置应用',
-        subtitle: '基础模式与高级 JSON 配置提交',
+        subtitle: '预检校验、差异对比与版本回滚入口',
       },
     }
     return headers[activeSection] || {
@@ -111,6 +125,10 @@ function App() {
       subtitle: '沉浸式暗色风格，支持配置实时感知与审计流程',
     }
   }, [activeSection])
+
+  const diffCurrentJson = useMemo(() => JSON.stringify(config || normalizeConfig(null), null, 2), [config])
+  const diffDraftJson = useMemo(() => JSON.stringify(configDraft, null, 2), [configDraft])
+  const diffChanged = diffCurrentJson !== diffDraftJson
 
   useEffect(() => {
     const loadHealth = async () => {
@@ -173,6 +191,36 @@ function App() {
     loadConfig()
   }, [token])
 
+  useEffect(() => {
+    if (!token || configView !== 'rollback' || loading.versions || versionsAutoLoaded) {
+      return
+    }
+    if (configVersions.length > 0) {
+      setVersionsAutoLoaded(true)
+      return
+    }
+    const loadVersions = async () => {
+      setLoading((prev) => ({ ...prev, versions: true }))
+      setErrorMessage('')
+      try {
+        const data = await fetchConfigVersions(token, 20)
+        setConfigVersions(data.items || [])
+      } catch (error) {
+        setErrorMessage(error instanceof Error ? error.message : '读取配置版本失败')
+      } finally {
+        setLoading((prev) => ({ ...prev, versions: false }))
+        setVersionsAutoLoaded(true)
+      }
+    }
+    loadVersions()
+  }, [token, configView, configVersions.length, loading.versions, versionsAutoLoaded])
+
+  useEffect(() => {
+    if (configView !== 'rollback') {
+      setVersionsAutoLoaded(false)
+    }
+  }, [configView])
+
   const refreshCaptchaRequirement = useCallback(async () => {
     try {
       const data = await fetchLoginCaptchaRequirement()
@@ -210,6 +258,11 @@ function App() {
       setJsonDraft(JSON.stringify(configDraft, null, 2))
     }
   }, [advancedMode, configDraft])
+
+  useEffect(() => {
+    setValidationIssues([])
+    setValidationTime('')
+  }, [configDraft, jsonDraft, advancedMode])
 
   const handleAllowedCidrsChange = (value: string) => {
     const cidrs = value
@@ -272,6 +325,11 @@ function App() {
     })
   }
 
+  const handleOperatorChange = (value: string) => {
+    setOperatorName(value)
+    localStorage.setItem('yobff_operator', value)
+  }
+
   const handleApplyConfig = async () => {
     if (!token) {
       setErrorMessage('请先登录后再应用配置')
@@ -280,18 +338,54 @@ function App() {
     setLoading((prev) => ({ ...prev, applying: true }))
     setErrorMessage('')
     setStatusMessage('')
+    setValidationIssues([])
+    setValidationTime('')
     try {
       let payload = configDraft
       if (advancedMode) {
         payload = JSON.parse(jsonDraft) as Config
         setConfigDraft(payload)
       }
-      await applyConfigRequest(token, payload)
+      const operatorValue = operatorName.trim() || 'unknown'
+      await applyConfigRequest(token, payload, operatorValue)
+      const normalized = normalizeConfig(payload)
+      setConfig(normalized)
+      setConfigDraft(normalized)
       setStatusMessage('配置已提交并应用')
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : '配置应用失败')
     } finally {
       setLoading((prev) => ({ ...prev, applying: false }))
+    }
+  }
+
+  const handleValidateConfig = async () => {
+    if (!token) {
+      setErrorMessage('请先登录后再执行预检')
+      return
+    }
+    setLoading((prev) => ({ ...prev, validating: true }))
+    setErrorMessage('')
+    setStatusMessage('')
+    try {
+      let payload = configDraft
+      if (advancedMode) {
+        payload = JSON.parse(jsonDraft) as Config
+        setConfigDraft(payload)
+      }
+      const operatorValue = operatorName.trim() || 'unknown'
+      const result = await validateConfigRequest(token, payload, operatorValue)
+      setValidationIssues(result.errors || [])
+      setValidationTime(new Date().toLocaleString())
+      if (result.valid) {
+        setStatusMessage('预检通过')
+      } else {
+        setErrorMessage('预检未通过')
+      }
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : '预检失败')
+    } finally {
+      setLoading((prev) => ({ ...prev, validating: false }))
     }
   }
 
@@ -310,6 +404,58 @@ function App() {
       setErrorMessage(error instanceof Error ? error.message : '热重载失败')
     } finally {
       setLoading((prev) => ({ ...prev, reload: false }))
+    }
+  }
+
+  const handleRefreshVersions = async () => {
+    if (!token) {
+      setErrorMessage('请先登录后再读取版本')
+      return
+    }
+    setLoading((prev) => ({ ...prev, versions: true }))
+    setErrorMessage('')
+    setVersionsAutoLoaded(true)
+    try {
+      const data = await fetchConfigVersions(token, 20)
+      setConfigVersions(data.items || [])
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : '读取配置版本失败')
+    } finally {
+      setLoading((prev) => ({ ...prev, versions: false }))
+    }
+  }
+
+  const handleRollback = async (versionID: string) => {
+    if (!token) {
+      setErrorMessage('请先登录后再回滚')
+      return
+    }
+    if (!versionID) {
+      return
+    }
+    const confirmed = window.confirm(`确认回滚到版本 ${versionID} 吗？`)
+    if (!confirmed) {
+      return
+    }
+    setLoading((prev) => ({ ...prev, rollback: true }))
+    setErrorMessage('')
+    setStatusMessage('')
+    try {
+      const operatorValue = operatorName.trim() || 'unknown'
+      await rollbackConfigRequest(token, { version_id: versionID }, operatorValue)
+      setStatusMessage(`已回滚到版本 ${versionID}`)
+      const [cfg, versions] = await Promise.all([
+        fetchConfig(token),
+        fetchConfigVersions(token, 20),
+      ])
+      const normalized = normalizeConfig(cfg)
+      setConfig(normalized)
+      setConfigDraft(normalized)
+      setConfigVersions(versions.items || [])
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : '回滚失败')
+    } finally {
+      setLoading((prev) => ({ ...prev, rollback: false }))
     }
   }
 
@@ -373,6 +519,8 @@ function App() {
     setConfigDraft(normalizeConfig(null))
     setCdnStatus({})
     setJsonDraft('')
+    setConfigVersions([])
+    setVersionsAutoLoaded(false)
     setStatusMessage('已退出登录')
   }
 
@@ -559,12 +707,33 @@ function App() {
               advancedMode={advancedMode}
               jsonDraft={jsonDraft}
               loadingApplying={loading.applying}
+              loadingValidating={loading.validating}
+              loadingVersions={loading.versions}
+              view={configView}
+              operator={operatorName}
+              validationIssues={validationIssues}
+              validationTime={validationTime}
+              configVersions={configVersions}
+              diffCurrentJson={diffCurrentJson}
+              diffDraftJson={diffDraftJson}
+              diffChanged={diffChanged}
+              onViewChange={(nextView) => {
+                setConfigView(nextView)
+                setErrorMessage('')
+                setStatusMessage('')
+              }}
+              onOperatorChange={handleOperatorChange}
               onToggleMode={setAdvancedMode}
               onJsonChange={setJsonDraft}
               onConfigChange={setConfigDraft}
               onApply={handleApplyConfig}
+              onValidate={handleValidateConfig}
+              onRefreshVersions={handleRefreshVersions}
+              onRollback={handleRollback}
               onReset={() => {
                 setConfigDraft(normalizeConfig(config))
+                setValidationIssues([])
+                setValidationTime('')
                 setStatusMessage('已恢复到最近一次读取的配置')
               }}
             />
