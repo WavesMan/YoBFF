@@ -69,6 +69,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("/api/v1/config/versions", withAuth(http.HandlerFunc(s.configVersions), s.manager))
 	mux.Handle("/api/v1/config/rollback", withAuth(http.HandlerFunc(s.rollbackConfig), s.manager))
 	mux.Handle("/api/v1/config/reload", withAuth(http.HandlerFunc(s.reload), s.manager))
+	s.registerSiteRoutes(mux)
 	mux.Handle("/api/v1/log/level", withAuth(http.HandlerFunc(s.logLevel), s.manager))
 	mux.Handle("/api/v1/log/stats", withAuth(http.HandlerFunc(s.logStats), s.manager))
 
@@ -142,6 +143,10 @@ func (s *Server) config(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// validateConfig 执行配置预检并返回错误列表。
+// 参数：w 为响应写入器，r 为请求对象。
+// 返回：预检结果与错误列表。
+// 异常：请求非法时返回错误。
 func (s *Server) validateConfig(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed", r)
@@ -161,6 +166,10 @@ func (s *Server) validateConfig(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// configVersions 查询配置版本列表，用于版本回滚入口展示。
+// 参数：w 为响应写入器，r 为请求对象。
+// 返回：配置版本列表。
+// 异常：存储不可用或查询失败时返回错误。
 func (s *Server) configVersions(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed", r)
@@ -181,6 +190,10 @@ func (s *Server) configVersions(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// rollbackConfig 回滚到指定配置版本并保存新版本记录。
+// 参数：w 为响应写入器，r 为请求对象。
+// 返回：回滚结果与目标版本标识。
+// 异常：版本不存在、配置非法或应用失败时返回错误。
 func (s *Server) rollbackConfig(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed", r)
@@ -384,6 +397,10 @@ func writeError(w http.ResponseWriter, status int, code string, message string, 
 	})
 }
 
+// writeValidationError 输出预检失败响应并补齐请求追踪信息。
+// 参数：w 为响应写入器，status 为 HTTP 状态码，code 为错误码，message 为错误描述，issues 为校验问题，r 为请求对象。
+// 返回：无。
+// 异常：无。
 func writeValidationError(w http.ResponseWriter, status int, code string, message string, issues []config.ValidationIssue, r *http.Request) {
 	requestID := requestIDFromContext(r.Context())
 	if requestID == "" {
@@ -446,6 +463,10 @@ func newRequestID() string {
 	return hex.EncodeToString(buffer)
 }
 
+// operatorFromRequest 读取操作人标识，缺失时返回默认值。
+// 参数：r 为请求对象。
+// 返回：操作人标识。
+// 异常：无。
 func operatorFromRequest(r *http.Request) string {
 	operator := strings.TrimSpace(r.Header.Get("X-Operator"))
 	if operator == "" {

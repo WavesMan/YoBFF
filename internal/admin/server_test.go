@@ -481,8 +481,8 @@ func TestServerHandler_Config_InvalidRequest(t *testing.T) {
 	}
 }
 
-// TestServerHandler_Config_ApplyFailed 验证配置应用失败时返回 400。
-func TestServerHandler_Config_ApplyFailed(t *testing.T) {
+// TestServerHandler_Config_Invalid 验证配置预检失败时返回 400。
+func TestServerHandler_Config_Invalid(t *testing.T) {
 	t.Setenv("ADMIN_API_TOKEN", "token")
 	t.Setenv("ADMIN_RATE_LIMIT_PER_MIN", "60")
 
@@ -509,7 +509,7 @@ func TestServerHandler_Config_ApplyFailed(t *testing.T) {
 	}
 	var payload errorResponse
 	_ = json.NewDecoder(rec.Result().Body).Decode(&payload)
-	if payload.ErrorCode != "config_apply_failed" {
+	if payload.ErrorCode != "config_invalid" {
 		t.Fatalf("错误码不匹配: got=%q", payload.ErrorCode)
 	}
 }

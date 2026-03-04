@@ -12,6 +12,7 @@ import (
 	"YoBFF/internal/logging"
 )
 
+// TestServer_CDNConfig 验证 CDN 配置接口的读写行为。
 func TestServer_CDNConfig(t *testing.T) {
 	// 1. Setup Env
 	os.Setenv("ADMIN_API_TOKEN", "test-token")
