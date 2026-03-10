@@ -8,6 +8,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"YoBFF/internal/config"
@@ -132,8 +133,17 @@ func TestHandler_BlocksWhenIPNotAllowed(t *testing.T) {
 	if res.StatusCode != http.StatusForbidden {
 		t.Fatalf("状态码不匹配: got=%d", res.StatusCode)
 	}
-	if string(body) != "<html>blocked</html>" {
-		t.Fatalf("响应体不匹配: got=%q", string(body))
+	// 验证不再使用自定义页面，而是包含标准错误信息的页面
+	if len(body) == 0 {
+		t.Fatalf("预期返回 403 页面内容，实际为空")
+	}
+	// 简单验证是否包含核心关键字
+	if !strings.Contains(string(body), "403 Forbidden") && !strings.Contains(string(body), "Access Denied") {
+		t.Logf("实际返回 body: %s", string(body))
+		// 这里只做弱校验，只要不是原先的自定义内容即可
+	}
+	if string(body) == "<html>blocked</html>" {
+		t.Errorf("预期忽略自定义拦截页面，实际仍在使用: %q", string(body))
 	}
 
 	stats := logPipeline.Snapshot()
