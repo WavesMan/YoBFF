@@ -120,3 +120,117 @@ func TestService_shouldSync(t *testing.T) {
 		t.Error("Should sync after duration")
 	}
 }
+
+func TestService_RunAndStart(t *testing.T) {
+	f, err := os.CreateTemp("", "syncer_run_*.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(f.Name())
+	content := `{
+		"dataPlane": {"httpListenAddr": ":8080"},
+		"controlPlane": {"adminListenAddr": ":9090"},
+		"security": {"allowedCidrs": []},
+		"routing": {"defaultUpstream": "http://localhost:8081"},
+		"certificates": [],
+		"cdnSync": {
+			"enabled": false,
+			"providers": ["cloudflare"],
+			"schedule": "1h"
+		}
+	}`
+	_, _ = f.WriteString(content)
+	_ = f.Close()
+
+	manager, err := config.NewManager(f.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime, err := logging.NewRuntimeFromEnv()
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := NewService(manager, runtime.Logger())
+
+	ctx1, cancel1 := context.WithCancel(context.Background())
+	cancel1()
+	service.run(ctx1)
+
+	ctx2, cancel2 := context.WithCancel(context.Background())
+	service.Start(ctx2)
+	time.Sleep(20 * time.Millisecond)
+	cancel2()
+	time.Sleep(20 * time.Millisecond)
+}
+
+func TestService_shouldSyncTable(t *testing.T) {
+	f, err := os.CreateTemp("", "syncer_schedule_*.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(f.Name())
+	content := `{
+		"dataPlane": {"httpListenAddr": ":8080"},
+		"controlPlane": {"adminListenAddr": ":9090"},
+		"security": {"allowedCidrs": []},
+		"routing": {"defaultUpstream": "http://localhost:8081"},
+		"certificates": [],
+		"cdnSync": {
+			"enabled": true,
+			"providers": ["cloudflare"],
+			"schedule": "1h"
+		}
+	}`
+	_, _ = f.WriteString(content)
+	_ = f.Close()
+	manager, err := config.NewManager(f.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := &Service{manager: manager}
+
+	cases := []struct {
+		name     string
+		enabled  bool
+		schedule string
+		lastSync time.Time
+		want     bool
+	}{
+		{
+			name:     "disabled",
+			enabled:  false,
+			schedule: "1m",
+			lastSync: time.Now().Add(-10 * time.Hour),
+			want:     false,
+		},
+		{
+			name:     "empty schedule default 1h not reached",
+			enabled:  true,
+			schedule: "",
+			lastSync: time.Now().Add(-10 * time.Minute),
+			want:     false,
+		},
+		{
+			name:     "invalid schedule fallback 1h reached",
+			enabled:  true,
+			schedule: "bad schedule",
+			lastSync: time.Now().Add(-2 * time.Hour),
+			want:     true,
+		},
+	}
+
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := manager.CurrentConfig()
+			cfg.CDNSync.Enabled = tt.enabled
+			cfg.CDNSync.Schedule = tt.schedule
+			if err = manager.Apply(cfg); err != nil {
+				t.Fatalf("应用配置失败: %v", err)
+			}
+			got := service.shouldSync(tt.lastSync)
+			if got != tt.want {
+				t.Fatalf("shouldSync 结果错误: got=%v want=%v", got, tt.want)
+			}
+		})
+	}
+}

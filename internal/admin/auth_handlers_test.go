@@ -219,3 +219,74 @@ func TestCaptcha_PresetEcho(t *testing.T) {
 		t.Fatalf("响应字段缺失: %#v", got)
 	}
 }
+
+func TestLoginCaptchaRequirementAndLogout(t *testing.T) {
+	t.Setenv("ADMIN_API_TOKEN", "token")
+	t.Setenv("ADMIN_RATE_LIMIT_PER_MIN", "60")
+
+	manager := buildManagerForTest(t, `{}`)
+	runtime, err := logging.NewRuntimeFromEnv()
+	if err != nil {
+		t.Fatalf("初始化日志运行时失败: %v", err)
+	}
+	pipeline := logging.NewPipeline(16, zap.NewNop())
+	defer pipeline.Close()
+
+	srv := NewServer(manager, runtime, pipeline, nil)
+	srv.guard = newLoginGuard(time.Hour)
+	handler := srv.Handler()
+
+	req1 := httptest.NewRequest(http.MethodGet, "http://example.com/api/v1/login/require-captcha", nil)
+	req1.RemoteAddr = "127.0.0.1:4321"
+	rec1 := httptest.NewRecorder()
+	handler.ServeHTTP(rec1, req1)
+	if rec1.Result().StatusCode != http.StatusOK {
+		t.Fatalf("验证码需求查询状态码不匹配: got=%d", rec1.Result().StatusCode)
+	}
+	var payload1 map[string]bool
+	_ = json.NewDecoder(rec1.Result().Body).Decode(&payload1)
+	if payload1["required"] {
+		t.Fatalf("首次不应要求验证码")
+	}
+
+	key := clientKey(req1)
+	srv.guard.OnFailure(key)
+	req2 := httptest.NewRequest(http.MethodGet, "http://example.com/api/v1/login/require-captcha", nil)
+	req2.RemoteAddr = "127.0.0.1:4321"
+	rec2 := httptest.NewRecorder()
+	handler.ServeHTTP(rec2, req2)
+	if rec2.Result().StatusCode != http.StatusOK {
+		t.Fatalf("验证码需求查询状态码不匹配: got=%d", rec2.Result().StatusCode)
+	}
+	var payload2 map[string]bool
+	_ = json.NewDecoder(rec2.Result().Body).Decode(&payload2)
+	if !payload2["required"] {
+		t.Fatalf("失败后应要求验证码")
+	}
+
+	req3 := httptest.NewRequest(http.MethodPost, "http://example.com/api/v1/login/require-captcha", nil)
+	req3.RemoteAddr = "127.0.0.1:4321"
+	rec3 := httptest.NewRecorder()
+	handler.ServeHTTP(rec3, req3)
+	if rec3.Result().StatusCode != http.StatusMethodNotAllowed {
+		t.Fatalf("非法方法状态码不匹配: got=%d", rec3.Result().StatusCode)
+	}
+
+	logoutReq := httptest.NewRequest(http.MethodPost, "http://example.com/api/v1/logout", nil)
+	logoutReq.RemoteAddr = "127.0.0.1:4321"
+	logoutReq.Header.Set("Authorization", "Bearer token")
+	logoutRec := httptest.NewRecorder()
+	handler.ServeHTTP(logoutRec, logoutReq)
+	if logoutRec.Result().StatusCode != http.StatusOK {
+		t.Fatalf("登出状态码不匹配: got=%d", logoutRec.Result().StatusCode)
+	}
+
+	logoutBadMethodReq := httptest.NewRequest(http.MethodGet, "http://example.com/api/v1/logout", nil)
+	logoutBadMethodReq.RemoteAddr = "127.0.0.1:4321"
+	logoutBadMethodReq.Header.Set("Authorization", "Bearer token")
+	logoutBadMethodRec := httptest.NewRecorder()
+	handler.ServeHTTP(logoutBadMethodRec, logoutBadMethodReq)
+	if logoutBadMethodRec.Result().StatusCode != http.StatusMethodNotAllowed {
+		t.Fatalf("登出非法方法状态码不匹配: got=%d", logoutBadMethodRec.Result().StatusCode)
+	}
+}

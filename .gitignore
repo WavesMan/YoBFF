@@ -17,6 +17,7 @@ feature-docs/
 
 # go test
 coverage.out
+coverage*
 
 # database
 config/*.db
