@@ -1,40 +1,27 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { FiActivity, FiEye, FiSettings, FiShield, FiShuffle, FiSliders, FiLock } from 'react-icons/fi'
+import { FiActivity, FiEye, FiShuffle, FiSliders, FiLock } from 'react-icons/fi'
 import './App.css'
 import {
-  applyConfig as applyConfigRequest,
   fetchCaptcha,
-  fetchCdnConfig,
-  fetchConfig,
-  fetchConfigVersions,
   fetchHealthz,
   fetchLoginCaptchaRequirement,
   fetchLogLevel,
   fetchLogStats,
   loginAdmin,
-  rollbackConfig as rollbackConfigRequest,
   logoutAdmin,
-  normalizeConfig,
-  reloadConfig as reloadConfigRequest,
   updateLogLevel as updateLogLevelRequest,
-  validateConfig as validateConfigRequest,
+  reloadConfig as reloadConfigRequest,
 } from './admin/api'
 import type {
   CaptchaResponse,
-  CDNStatus,
-  Config,
-  ConfigVersion,
   HealthzResponse,
   LoginPayload,
   LogStats,
-  ValidationIssue,
 } from './admin/types'
 import { Sidebar } from './components/Sidebar'
 import { TopBar } from './components/TopBar'
-import { ConfigPanel } from './sections/ConfigPanel'
 import { ObservabilitySection } from './sections/ObservabilitySection'
 import { OverviewSection } from './sections/OverviewSection'
-import { SecuritySection } from './sections/SecuritySection'
 import { CertificatesSection } from './sections/CertificatesSection'
 import { SystemSection } from './sections/SystemSection'
 import { TrafficSection } from './sections/TrafficSection'
@@ -42,11 +29,9 @@ import { TrafficSection } from './sections/TrafficSection'
 const menuItems = [
   { key: 'dashboard', label: '仪表盘', icon: <FiActivity /> },
   { key: 'traffic', label: '流量管理', icon: <FiShuffle /> },
-  { key: 'security', label: '安全防护', icon: <FiShield /> },
   { key: 'certificates', label: '证书管理', icon: <FiLock /> },
   { key: 'observability', label: '观测中心', icon: <FiEye /> },
   { key: 'system', label: '系统设置', icon: <FiSliders /> },
-  { key: 'config', label: '配置应用', icon: <FiSettings /> },
 ]
 
 function App() {
@@ -56,14 +41,6 @@ function App() {
   const [health, setHealth] = useState<HealthzResponse | null>(null)
   const [logStats, setLogStats] = useState<LogStats | null>(null)
   const [logLevel, setLogLevel] = useState('info')
-  const [config, setConfig] = useState<Config | null>(null)
-  const [configDraft, setConfigDraft] = useState<Config>(normalizeConfig(null))
-  const [configView, setConfigView] = useState<'apply' | 'dry-run' | 'rollback'>('apply')
-  const [configVersions, setConfigVersions] = useState<ConfigVersion[]>([])
-  const [versionsAutoLoaded, setVersionsAutoLoaded] = useState(false)
-  const [validationIssues, setValidationIssues] = useState<ValidationIssue[]>([])
-  const [validationTime, setValidationTime] = useState('')
-  const [cdnStatus, setCdnStatus] = useState<Record<string, CDNStatus>>({})
   const [captcha, setCaptcha] = useState<CaptchaResponse | null>(null)
   const [captchaRequired, setCaptchaRequired] = useState(false)
   const [loginForm, setLoginForm] = useState<LoginPayload>({
@@ -72,21 +49,14 @@ function App() {
     captcha_id: '',
     captcha_code: '',
   })
-  const [advancedMode, setAdvancedMode] = useState(false)
-  const [jsonDraft, setJsonDraft] = useState('')
-  const [operatorName, setOperatorName] = useState(() => localStorage.getItem('yobff_operator') || '')
+  const [operatorName] = useState(() => localStorage.getItem('yobff_operator') || '')
   const [statusMessage, setStatusMessage] = useState('')
   const [errorMessage, setErrorMessage] = useState('')
   const [loading, setLoading] = useState({
     health: false,
     logStats: false,
-    config: false,
     logLevel: false,
-    applying: false,
-    validating: false,
     reload: false,
-    versions: false,
-    rollback: false,
   })
 
   const pageHeader = useMemo(() => {
@@ -99,10 +69,6 @@ function App() {
         title: '流量管理',
         subtitle: '域名与转发策略的统一配置入口',
       },
-      security: {
-        title: '安全防护',
-        subtitle: '防火墙、WAF 与访问控制策略',
-      },
       certificates: {
         title: '证书管理',
         subtitle: 'SSL/TLS 证书生命周期管理',
@@ -114,10 +80,6 @@ function App() {
       system: {
         title: '系统设置',
         subtitle: '运行参数与管理能力的集中配置',
-      },
-      config: {
-        title: '配置应用',
-        subtitle: '预检校验、差异对比与版本回滚入口',
       },
     }
     return headers[activeSection] || {
@@ -136,10 +98,6 @@ function App() {
     }
     return count
   }, [errorMessage, statusMessage])
-
-  const diffCurrentJson = useMemo(() => JSON.stringify(config || normalizeConfig(null), null, 2), [config])
-  const diffDraftJson = useMemo(() => JSON.stringify(configDraft, null, 2), [configDraft])
-  const diffChanged = diffCurrentJson !== diffDraftJson
 
   useEffect(() => {
     const loadHealth = async () => {
@@ -178,60 +136,6 @@ function App() {
     loadSummary()
   }, [token])
 
-  useEffect(() => {
-    if (!token) {
-      return
-    }
-    const loadConfig = async () => {
-      setLoading((prev) => ({ ...prev, config: true }))
-      try {
-        const [cfg, cdn] = await Promise.all([
-          fetchConfig(token),
-          fetchCdnConfig(token),
-        ])
-        const normalized = normalizeConfig(cfg)
-        setConfig(normalized)
-        setConfigDraft(normalized)
-        setCdnStatus(cdn.status || {})
-      } catch (error) {
-        setErrorMessage(error instanceof Error ? error.message : '读取配置失败')
-      } finally {
-        setLoading((prev) => ({ ...prev, config: false }))
-      }
-    }
-    loadConfig()
-  }, [token])
-
-  useEffect(() => {
-    if (!token || configView !== 'rollback' || loading.versions || versionsAutoLoaded) {
-      return
-    }
-    if (configVersions.length > 0) {
-      setVersionsAutoLoaded(true)
-      return
-    }
-    const loadVersions = async () => {
-      setLoading((prev) => ({ ...prev, versions: true }))
-      setErrorMessage('')
-      try {
-        const data = await fetchConfigVersions(token, 20)
-        setConfigVersions(data.items || [])
-      } catch (error) {
-        setErrorMessage(error instanceof Error ? error.message : '读取配置版本失败')
-      } finally {
-        setLoading((prev) => ({ ...prev, versions: false }))
-        setVersionsAutoLoaded(true)
-      }
-    }
-    loadVersions()
-  }, [token, configView, configVersions.length, loading.versions, versionsAutoLoaded])
-
-  useEffect(() => {
-    if (configView !== 'rollback') {
-      setVersionsAutoLoaded(false)
-    }
-  }, [configView])
-
   const refreshCaptchaRequirement = useCallback(async () => {
     try {
       const data = await fetchLoginCaptchaRequirement()
@@ -264,108 +168,6 @@ function App() {
     }
   }, [refreshCaptchaRequirement, token])
 
-  useEffect(() => {
-    if (advancedMode) {
-      setJsonDraft(JSON.stringify(configDraft, null, 2))
-    }
-  }, [advancedMode, configDraft])
-
-  useEffect(() => {
-    setValidationIssues([])
-    setValidationTime('')
-  }, [configDraft, jsonDraft, advancedMode])
-
-  const handleAllowedCidrsChange = (value: string) => {
-    const cidrs = value
-      .split('\n')
-      .map((line) => line.trim())
-      .filter(Boolean)
-    const normalized = normalizeConfig(configDraft)
-    setConfigDraft({
-      ...normalized,
-      security: {
-        ...normalized.security,
-        allowedCidrs: cidrs,
-      },
-    })
-  }
-
-  const handleBlockPageChange = (value: string) => {
-    const normalized = normalizeConfig(configDraft)
-    setConfigDraft({
-      ...normalized,
-      security: {
-        ...normalized.security,
-        blockPageHtml: value,
-      },
-    })
-  }
-
-
-  const handleOperatorChange = (value: string) => {
-    setOperatorName(value)
-    localStorage.setItem('yobff_operator', value)
-  }
-
-  const handleApplyConfig = async () => {
-    if (!token) {
-      setErrorMessage('请先登录后再应用配置')
-      return
-    }
-    setLoading((prev) => ({ ...prev, applying: true }))
-    setErrorMessage('')
-    setStatusMessage('')
-    setValidationIssues([])
-    setValidationTime('')
-    try {
-      let payload = configDraft
-      if (advancedMode) {
-        payload = JSON.parse(jsonDraft) as Config
-        setConfigDraft(payload)
-      }
-      const operatorValue = operatorName.trim() || 'unknown'
-      await applyConfigRequest(token, payload, operatorValue)
-      const normalized = normalizeConfig(payload)
-      setConfig(normalized)
-      setConfigDraft(normalized)
-      setStatusMessage('配置已提交并应用')
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : '配置应用失败')
-    } finally {
-      setLoading((prev) => ({ ...prev, applying: false }))
-    }
-  }
-
-  const handleValidateConfig = async () => {
-    if (!token) {
-      setErrorMessage('请先登录后再执行预检')
-      return
-    }
-    setLoading((prev) => ({ ...prev, validating: true }))
-    setErrorMessage('')
-    setStatusMessage('')
-    try {
-      let payload = configDraft
-      if (advancedMode) {
-        payload = JSON.parse(jsonDraft) as Config
-        setConfigDraft(payload)
-      }
-      const operatorValue = operatorName.trim() || 'unknown'
-      const result = await validateConfigRequest(token, payload, operatorValue)
-      setValidationIssues(result.errors || [])
-      setValidationTime(new Date().toLocaleString())
-      if (result.valid) {
-        setStatusMessage('预检通过')
-      } else {
-        setErrorMessage('预检未通过')
-      }
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : '预检失败')
-    } finally {
-      setLoading((prev) => ({ ...prev, validating: false }))
-    }
-  }
-
   const handleReload = async () => {
     if (!token) {
       setErrorMessage('请先登录后再热重载')
@@ -381,58 +183,6 @@ function App() {
       setErrorMessage(error instanceof Error ? error.message : '热重载失败')
     } finally {
       setLoading((prev) => ({ ...prev, reload: false }))
-    }
-  }
-
-  const handleRefreshVersions = async () => {
-    if (!token) {
-      setErrorMessage('请先登录后再读取版本')
-      return
-    }
-    setLoading((prev) => ({ ...prev, versions: true }))
-    setErrorMessage('')
-    setVersionsAutoLoaded(true)
-    try {
-      const data = await fetchConfigVersions(token, 20)
-      setConfigVersions(data.items || [])
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : '读取配置版本失败')
-    } finally {
-      setLoading((prev) => ({ ...prev, versions: false }))
-    }
-  }
-
-  const handleRollback = async (versionID: string) => {
-    if (!token) {
-      setErrorMessage('请先登录后再回滚')
-      return
-    }
-    if (!versionID) {
-      return
-    }
-    const confirmed = window.confirm(`确认回滚到版本 ${versionID} 吗？`)
-    if (!confirmed) {
-      return
-    }
-    setLoading((prev) => ({ ...prev, rollback: true }))
-    setErrorMessage('')
-    setStatusMessage('')
-    try {
-      const operatorValue = operatorName.trim() || 'unknown'
-      await rollbackConfigRequest(token, { version_id: versionID }, operatorValue)
-      setStatusMessage(`已回滚到版本 ${versionID}`)
-      const [cfg, versions] = await Promise.all([
-        fetchConfig(token),
-        fetchConfigVersions(token, 20),
-      ])
-      const normalized = normalizeConfig(cfg)
-      setConfig(normalized)
-      setConfigDraft(normalized)
-      setConfigVersions(versions.items || [])
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : '回滚失败')
-    } finally {
-      setLoading((prev) => ({ ...prev, rollback: false }))
     }
   }
 
@@ -492,12 +242,6 @@ function App() {
     localStorage.removeItem('yobff_token')
     setToken(null)
     setLogStats(null)
-    setConfig(null)
-    setConfigDraft(normalizeConfig(null))
-    setCdnStatus({})
-    setJsonDraft('')
-    setConfigVersions([])
-    setVersionsAutoLoaded(false)
     setStatusMessage('已退出登录')
   }
 
@@ -653,14 +397,6 @@ function App() {
                 operator={operatorName || 'unknown'}
               />
             )}
-            {activeSection === 'security' && (
-            <SecuritySection
-              configDraft={configDraft}
-              cdnStatus={cdnStatus}
-              onAllowedCidrsChange={handleAllowedCidrsChange}
-              onBlockPageChange={handleBlockPageChange}
-            />
-          )}
           {activeSection === 'certificates' && (
             <CertificatesSection token={token || ''} />
           )}
@@ -680,53 +416,6 @@ function App() {
               loadingReload={loading.reload}
               onReload={handleReload}
             />
-          )}
-          {activeSection === 'config' && (
-            <ConfigPanel
-              configDraft={configDraft}
-              configSnapshot={config}
-              advancedMode={advancedMode}
-              jsonDraft={jsonDraft}
-              loadingApplying={loading.applying}
-              loadingValidating={loading.validating}
-              loadingVersions={loading.versions}
-              view={configView}
-              operator={operatorName}
-              validationIssues={validationIssues}
-              validationTime={validationTime}
-              configVersions={configVersions}
-              diffCurrentJson={diffCurrentJson}
-              diffDraftJson={diffDraftJson}
-              diffChanged={diffChanged}
-              onViewChange={(nextView) => {
-                setConfigView(nextView)
-                setErrorMessage('')
-                setStatusMessage('')
-              }}
-              onOperatorChange={handleOperatorChange}
-              onToggleMode={setAdvancedMode}
-              onJsonChange={setJsonDraft}
-              onConfigChange={setConfigDraft}
-              onApply={handleApplyConfig}
-              onValidate={handleValidateConfig}
-              onRefreshVersions={handleRefreshVersions}
-              onRollback={handleRollback}
-              onReset={() => {
-                setConfigDraft(normalizeConfig(config))
-                setValidationIssues([])
-                setValidationTime('')
-                setStatusMessage('已恢复到最近一次读取的配置')
-              }}
-            />
-          )}
-          {loading.config && (
-            <div className="card">
-              <div className="stack">
-                <div className="skeleton" />
-                <div className="skeleton" />
-                <div className="skeleton" />
-              </div>
-            </div>
           )}
         </main>
       </div>

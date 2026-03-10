@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
-import { FiEdit2, FiGlobe, FiServer, FiSettings, FiTrash2, FiX } from 'react-icons/fi'
-import { createSite, deleteSite, fetchSiteGroups, updateSite } from '../../admin/api'
-import type { Site, SiteCreateRequest, SiteGroup, SiteUpdateRequest } from '../../admin/types'
+import { FiGlobe, FiServer, FiSettings, FiTrash2, FiX } from 'react-icons/fi'
+import { createSite, deleteSite, fetchSiteGroups } from '../../admin/api'
+import type { Site, SiteCreateRequest, SiteGroup } from '../../admin/types'
 
 type SiteListProps = {
   token: string
@@ -14,7 +14,6 @@ export function SiteList({ token, onSelectSite }: SiteListProps) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [showCreateModal, setShowCreateModal] = useState(false)
-  const [editingSite, setEditingSite] = useState<Site | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<Site | null>(null)
   const [deleting, setDeleting] = useState(false)
 
@@ -106,23 +105,12 @@ export function SiteList({ token, onSelectSite }: SiteListProps) {
                       <td style={{ textAlign: 'right' }}>
                         <div className="action-buttons">
                           <button
-                            className="button small"
+                            className="button secondary"
                             onClick={() => onSelectSite(site.id)}
                             title="配置"
+                            style={{ padding: '6px 16px' }}
                           >
-                            <FiSettings />
-                          </button>
-                          <button
-                            className="button small secondary"
-                            onClick={() => setEditingSite({
-                              id: site.id,
-                              name: site.name,
-                              hostname: site.hostname,
-                              ip: site.ip,
-                            })}
-                            title="编辑信息"
-                          >
-                            <FiEdit2 />
+                            <FiSettings style={{ marginRight: 6 }} /> 配置
                           </button>
                           <button
                             className="button small danger"
@@ -155,18 +143,6 @@ export function SiteList({ token, onSelectSite }: SiteListProps) {
           onClose={() => setShowCreateModal(false)}
           onCreated={() => {
             setShowCreateModal(false)
-            loadSites()
-          }}
-        />
-      )}
-
-      {editingSite && (
-        <EditSiteDrawer
-          token={token}
-          site={editingSite}
-          onClose={() => setEditingSite(null)}
-          onUpdated={() => {
-            setEditingSite(null)
             loadSites()
           }}
         />
@@ -423,69 +399,4 @@ function CreateSiteDrawer({ token, onClose, onCreated }: { token: string, onClos
   )
 }
 
-function EditSiteDrawer({ token, site, onClose, onUpdated }: { token: string, site: Site, onClose: () => void, onUpdated: () => void }) {
-  const [form, setForm] = useState<SiteUpdateRequest>({
-    name: site.name,
-    hostname: site.hostname,
-    ip: site.ip,
-  })
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
 
-  const handleSubmit = async () => {
-    setLoading(true)
-    setError('')
-    try {
-      await updateSite(token, site.id, form)
-      onUpdated()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : '更新站点失败')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  return (
-    <>
-      <div className="site-edit-overlay open" onClick={onClose} />
-      <div className="site-edit-drawer open">
-        <div className="site-edit-header">
-          <div className="site-edit-title">
-            <button className="icon-btn" onClick={onClose}><FiX /></button>
-            <h3>编辑站点信息</h3>
-          </div>
-          <button className="button primary" onClick={handleSubmit} disabled={loading}>
-            {loading ? '保存中...' : '保存'}
-          </button>
-        </div>
-        <div className="site-edit-body">
-          {error && <div className="error-message">{error}</div>}
-          <div className="form-field">
-            <label>站点名称</label>
-            <input
-              className="input"
-              value={form.name || ''}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-            />
-          </div>
-          <div className="form-field">
-            <label>域名</label>
-            <input
-              className="input"
-              value={form.hostname || ''}
-              onChange={(e) => setForm({ ...form, hostname: e.target.value })}
-            />
-          </div>
-          <div className="form-field">
-            <label>IP 地址</label>
-            <input
-              className="input"
-              value={form.ip || ''}
-              onChange={(e) => setForm({ ...form, ip: e.target.value })}
-            />
-          </div>
-        </div>
-      </div>
-    </>
-  )
-}

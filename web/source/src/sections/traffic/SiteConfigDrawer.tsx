@@ -21,12 +21,13 @@ import {
   fetchSiteVersions,
   rollbackSiteConfig,
   updateSiteConfig,
+  updateSite,
   validateConfig,
   fetchSiteLogStream,
   updateSiteLogStream,
   fetchCertificates
 } from '../../admin/api'
-import type { Config, ConfigVersion, DomainRule, Site, SiteLogStream, SSLCertificate } from '../../admin/types'
+import type { Config, ConfigVersion, DomainRule, Site, SiteLogStream, SiteUpdateRequest, SSLCertificate } from '../../admin/types'
 
 type SiteConfigDrawerProps = {
   token: string
@@ -45,6 +46,7 @@ export function SiteConfigDrawer({ token, operator, siteId, onClose }: SiteConfi
   const [isLogConnected, setIsLogConnected] = useState(false)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [updatingSite, setUpdatingSite] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
 
@@ -54,6 +56,14 @@ export function SiteConfigDrawer({ token, operator, siteId, onClose }: SiteConfi
     upstream: '',
     forceHttps: true
   })
+  
+  // Site Update Form State
+  const [siteForm, setSiteForm] = useState<SiteUpdateRequest>({
+    name: '',
+    hostname: '',
+    ip: ''
+  })
+
   
 
   const [cdnExpanded, setCdnExpanded] = useState(true)
@@ -120,6 +130,11 @@ export function SiteConfigDrawer({ token, operator, siteId, onClose }: SiteConfi
     try {
       const data = await fetchSite(token, siteId)
       setSite(data)
+      setSiteForm({
+        name: data.name,
+        hostname: data.hostname,
+        ip: data.ip
+      })
     } catch (err) {
       console.error('Failed to load site info', err)
     }
@@ -219,6 +234,23 @@ export function SiteConfigDrawer({ token, operator, siteId, onClose }: SiteConfi
     }
   }
   
+  const handleSaveSiteInfo = async () => {
+    if (!site) return
+    setUpdatingSite(true)
+    setError('')
+    setSuccess('')
+    try {
+      const updatedSite = await updateSite(token, siteId, siteForm)
+      setSite(updatedSite)
+      setSuccess('站点基本信息已更新')
+      setTimeout(() => setSuccess(''), 3000)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '更新站点信息失败')
+    } finally {
+      setUpdatingSite(false)
+    }
+  }
+
   const handleUpdateLogStream = async () => {
     if (!logStream) return
     try {
@@ -345,7 +377,17 @@ export function SiteConfigDrawer({ token, operator, siteId, onClose }: SiteConfi
             <>
               {activeTab === 'basic' && (
                 <div className="panel">
-                  <h4>基础设置</h4>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                    <h4 style={{ margin: 0 }}>基础设置</h4>
+                    <button 
+                      className="button secondary small" 
+                      onClick={handleSaveSiteInfo}
+                      disabled={updatingSite || loading}
+                    >
+                      {updatingSite ? '更新中...' : '更新基本信息'}
+                    </button>
+                  </div>
+                  
                   <div className="form-field">
                     <label>站点 ID</label>
                     <input className="input" defaultValue={siteId} disabled />
@@ -354,15 +396,27 @@ export function SiteConfigDrawer({ token, operator, siteId, onClose }: SiteConfi
                     <>
                       <div className="form-field">
                         <label>站点名称</label>
-                        <input className="input" defaultValue={site.name} disabled />
+                        <input 
+                          className="input" 
+                          value={siteForm.name || ''} 
+                          onChange={e => setSiteForm({ ...siteForm, name: e.target.value })}
+                        />
                       </div>
                       <div className="form-field">
                         <label>主域名</label>
-                        <input className="input" defaultValue={site.hostname} disabled />
+                        <input 
+                          className="input" 
+                          value={siteForm.hostname || ''} 
+                          onChange={e => setSiteForm({ ...siteForm, hostname: e.target.value })}
+                        />
                       </div>
                       <div className="form-field">
                         <label>绑定 IP</label>
-                        <input className="input" defaultValue={site.ip} disabled />
+                        <input 
+                          className="input" 
+                          value={siteForm.ip || ''} 
+                          onChange={e => setSiteForm({ ...siteForm, ip: e.target.value })}
+                        />
                       </div>
                     </>
                   )}
@@ -752,6 +806,28 @@ export function SiteConfigDrawer({ token, operator, siteId, onClose }: SiteConfi
                                 security: { 
                                   ...prev.security, 
                                   allowedCidrs: e.target.value.split('\n').map(l => l.trim()).filter(Boolean)
+                                }
+                              }))}
+                            />
+                          </div>
+                        </div>
+
+                        <div style={{ marginTop: '20px', borderTop: '1px solid var(--border)', paddingTop: '20px' }}>
+                          <div className="form-field">
+                            <label style={{ fontWeight: 600, marginBottom: '8px', display: 'block' }}>自定义拦截页面 (Block Page HTML)</label>
+                            <div className="muted" style={{ marginBottom: '10px', fontSize: '13px' }}>
+                              当请求被安全策略拦截时显示的页面内容。支持 HTML。留空则使用默认拦截页面。
+                            </div>
+                            <textarea 
+                              className="textarea"
+                              rows={8}
+                              placeholder="<html>...</html>"
+                              value={config.security?.blockPageHtml || ''}
+                              onChange={e => updateConfig(prev => ({
+                                ...prev,
+                                security: { 
+                                  ...prev.security, 
+                                  blockPageHtml: e.target.value
                                 }
                               }))}
                             />
