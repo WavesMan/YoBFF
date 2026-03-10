@@ -50,9 +50,18 @@ type CloudflareConfig struct {
 
 // SecurityConfig 表示回源安全策略。
 type SecurityConfig struct {
-	AllowedCIDRs  []string `json:"allowedCidrs"`
-	BlockPageHTML string   `json:"blockPageHtml"`
-	EnableHSTS    bool     `json:"enableHsts"`
+	AllowedCIDRs        []string                      `json:"allowedCidrs"`
+	AllowedCDNProviders []string                      `json:"allowedCdnProviders"`
+	CDNProviderSettings map[string]CDNProviderSetting `json:"cdnProviderSettings,omitempty"`
+	BlockPageHTML       string                        `json:"blockPageHtml"`
+	EnableHSTS          bool                          `json:"enableHsts"`
+}
+
+// CDNProviderSetting 定义单个 CDN 厂商的特定配置。
+type CDNProviderSetting struct {
+	APIKey    string `json:"apiKey,omitempty"`
+	SecretKey string `json:"secretKey,omitempty"`
+	Option    string `json:"option,omitempty"`
 }
 
 // RoutingConfig 表示域名到上游的路由规则集合。

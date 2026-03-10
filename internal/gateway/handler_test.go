@@ -12,9 +12,91 @@ import (
 
 	"YoBFF/internal/config"
 	"YoBFF/internal/logging"
+	"YoBFF/internal/store"
 
 	"go.uber.org/zap"
 )
+
+// TestHandler_SiteConfigOverride 验证站点级配置优先于全局配置生效。
+func TestHandler_SiteConfigOverride(t *testing.T) {
+	// 1. 初始化存储并创建站点配置
+	dbPath := filepath.Join(t.TempDir(), "test.db")
+	s, err := store.NewSQLiteStore(dbPath)
+	if err != nil {
+		t.Fatalf("初始化存储失败: %v", err)
+	}
+	defer s.Close()
+
+	site := store.Site{
+		Name:     "Secure Site",
+		Hostname: "secure.local",
+		IP:       "127.0.0.1",
+	}
+	createdSite, err := s.CreateSite(site)
+	if err != nil {
+		t.Fatalf("创建站点失败: %v", err)
+	}
+
+	// 站点配置：仅允许 192.168.1.1
+	siteCfg := config.Config{
+		Security: config.SecurityConfig{
+			AllowedCIDRs:  []string{"192.168.1.1/32"},
+			BlockPageHTML: "<html>site-blocked</html>",
+		},
+	}
+	if _, err := s.UpdateSiteConfig(createdSite.ID, siteCfg, "admin", "test"); err != nil {
+		t.Fatalf("更新站点配置失败: %v", err)
+	}
+
+	// 2. 初始化全局配置（允许所有 127.0.0.0/8）
+	manager := buildManagerForTest(t, config.Config{
+		Security: config.SecurityConfig{
+			AllowedCIDRs:  []string{"127.0.0.0/8"},
+			BlockPageHTML: "<html>global-blocked</html>",
+		},
+		Routing: config.RoutingConfig{
+			Domains: []config.DomainRule{
+				{Domain: "secure.local", Upstream: "http://127.0.0.1:9999", ForceHTTPS: false},
+			},
+		},
+	})
+
+	logPipeline := logging.NewPipeline(16, zap.NewNop())
+	defer logPipeline.Close()
+
+	handler := NewHandler(manager, logPipeline, s)
+
+	// 3. 测试场景：客户端 IP 为 127.0.0.1
+	// 全局配置允许，但站点配置仅允许 192.168.1.1，预期被拦截
+	req := httptest.NewRequest(http.MethodGet, "http://secure.local/hello", nil)
+	req.RemoteAddr = "127.0.0.1:1234"
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	res := rec.Result()
+	body, _ := io.ReadAll(res.Body)
+
+	if res.StatusCode != http.StatusForbidden {
+		t.Errorf("预期站点配置拦截 (403)，实际: %d", res.StatusCode)
+	}
+	if string(body) != "<html>site-blocked</html>" {
+		t.Errorf("预期使用站点拦截页面，实际: %q", string(body))
+	}
+
+	// 4. 测试场景：客户端 IP 为 192.168.1.1
+	// 站点配置允许，预期通过（由于没有上游，可能会 404 或其他，但不会是 403）
+	// 注意：Handler 逻辑中，Allowed 之后会继续处理路由。如果没有路由匹配，默认行为是什么？
+	// 查看 Handler.ServeHTTP: if allowed { ... match route ... }
+	// 如果没有路由匹配，Handler 可能会返回 404。
+	req2 := httptest.NewRequest(http.MethodGet, "http://secure.local/hello", nil)
+	req2.RemoteAddr = "192.168.1.1:5678"
+	rec2 := httptest.NewRecorder()
+	handler.ServeHTTP(rec2, req2)
+
+	if rec2.Result().StatusCode == http.StatusForbidden {
+		t.Errorf("预期站点配置放行，实际被拦截 (403)")
+	}
+}
 
 // TestHandler_BlocksWhenIPNotAllowed 验证来源 IP 不在白名单时返回 403。
 func TestHandler_BlocksWhenIPNotAllowed(t *testing.T) {
@@ -33,7 +115,7 @@ func TestHandler_BlocksWhenIPNotAllowed(t *testing.T) {
 	logPipeline := logging.NewPipeline(16, zap.NewNop())
 	defer logPipeline.Close()
 
-	handler := NewHandler(manager, logPipeline)
+	handler := NewHandler(manager, logPipeline, nil)
 	req := httptest.NewRequest(http.MethodGet, "http://example.local/hello", nil)
 	req.RemoteAddr = "127.0.0.1:1234"
 	rec := httptest.NewRecorder()
@@ -71,7 +153,7 @@ func TestHandler_RedirectsToHTTPSWhenForced(t *testing.T) {
 	logPipeline := logging.NewPipeline(16, zap.NewNop())
 	defer logPipeline.Close()
 
-	handler := NewHandler(manager, logPipeline)
+	handler := NewHandler(manager, logPipeline, nil)
 	req := httptest.NewRequest(http.MethodGet, "http://Example.Local:8080/hello?x=1", nil)
 	req.RemoteAddr = "127.0.0.1:1234"
 	rec := httptest.NewRecorder()
@@ -124,7 +206,7 @@ func TestHandler_ProxiesToUpstream(t *testing.T) {
 	logPipeline := logging.NewPipeline(16, zap.NewNop())
 	defer logPipeline.Close()
 
-	handler := NewHandler(manager, logPipeline)
+	handler := NewHandler(manager, logPipeline, nil)
 	req := httptest.NewRequest(http.MethodGet, "http://example.local/hello", nil)
 	req.RemoteAddr = "127.0.0.1:1234"
 	rec := httptest.NewRecorder()
@@ -182,7 +264,7 @@ func TestHandler_ProxiesToUpstreamOverTLS(t *testing.T) {
 	logPipeline := logging.NewPipeline(16, zap.NewNop())
 	defer logPipeline.Close()
 
-	handler := NewHandler(manager, logPipeline)
+	handler := NewHandler(manager, logPipeline, nil)
 	req := httptest.NewRequest(http.MethodGet, "https://example.local/hello", nil)
 	req.RemoteAddr = "127.0.0.1:1234"
 	req.TLS = &tls.ConnectionState{}
@@ -209,7 +291,7 @@ func TestHandler_UpstreamErrorReturns502(t *testing.T) {
 	logPipeline := logging.NewPipeline(16, zap.NewNop())
 	defer logPipeline.Close()
 
-	handler := NewHandler(manager, logPipeline)
+	handler := NewHandler(manager, logPipeline, nil)
 	req := httptest.NewRequest(http.MethodGet, "http://example.local/hello", nil)
 	req.RemoteAddr = "127.0.0.1:1234"
 	rec := httptest.NewRecorder()

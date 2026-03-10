@@ -30,6 +30,7 @@ type snapshot struct {
 	cfg            Config
 	allowAll       bool
 	allowedCIDRs   []netip.Prefix
+	cdnProviderCIDRs map[string][]netip.Prefix
 	exactRoutes    map[string]routeItem
 	wildcardRoutes []wildcardItem
 	defaultRoute   *routeItem
@@ -104,11 +105,15 @@ func (m *Manager) CurrentConfig() Config {
 // 异常：当路由、CIDR 或证书非法时返回错误。
 func (m *Manager) Apply(cfg Config) error {
 	m.mu.Lock()
-	dynamic := m.dynamicCIDRs
+	dynamic := append([]string(nil), m.dynamicCIDRs...)
+	statuses := make(map[string]CDNStatus, len(m.cdnStatuses))
+	for k, v := range m.cdnStatuses {
+		statuses[k] = v
+	}
 	m.mu.Unlock()
 
 	filled := fillDefaults(cfg)
-	next, err := buildSnapshot(filled, m.path, dynamic)
+	next, err := buildSnapshot(filled, m.path, dynamic, statuses)
 	if err != nil {
 		return err
 	}
@@ -131,13 +136,19 @@ func (m *Manager) UpdateProviderStatus(provider string, cidrs []string, syncErr 
 		m.cdnStatuses = make(map[string]CDNStatus)
 	}
 
+	providerName := strings.ToLower(strings.TrimSpace(provider))
+	if providerName == "" {
+		m.mu.Unlock()
+		return errors.New("provider is empty")
+	}
+
 	errMsg := ""
 	if syncErr != nil {
 		errMsg = syncErr.Error()
 	}
 
-	m.cdnStatuses[provider] = CDNStatus{
-		Provider: provider,
+	m.cdnStatuses[providerName] = CDNStatus{
+		Provider: providerName,
 		CIDRs:    cidrs,
 		LastSync: time.Now(),
 		Error:    errMsg,
@@ -246,6 +257,30 @@ func (m *Manager) IsIPAllowed(ip netip.Addr) bool {
 	return false
 }
 
+// IsIPAllowedByProviders 判断来源 IP 是否命中指定提供商的 CIDR 集合。
+// 参数：ip 为客户端地址，providers 为提供商列表。
+// 返回：true 表示来源 IP 合法。
+// 异常：无。
+func (m *Manager) IsIPAllowedByProviders(ip netip.Addr, providers []string) bool {
+	data := m.data.Load()
+	if data == nil || len(providers) == 0 || len(data.cdnProviderCIDRs) == 0 {
+		return false
+	}
+	for _, raw := range providers {
+		provider := strings.ToLower(strings.TrimSpace(raw))
+		if provider == "" {
+			continue
+		}
+		cidrs := data.cdnProviderCIDRs[provider]
+		for _, cidr := range cidrs {
+			if cidr.Contains(ip) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // GetCertificate 在 TLS 握手阶段按 SNI 返回匹配证书。
 // 参数：hello 为握手元信息。
 // 返回：匹配证书与错误信息。
@@ -299,12 +334,13 @@ func fillDefaults(cfg Config) Config {
 // 参数：cfg 为已补齐配置，configPath 用于定位证书相对路径，dynamicCIDRs 为动态 IP 白名单。
 // 返回：可原子替换的快照对象。
 // 异常：CIDR、路由或证书加载失败时返回错误。
-func buildSnapshot(cfg Config, configPath string, dynamicCIDRs []string) (*snapshot, error) {
+func buildSnapshot(cfg Config, configPath string, dynamicCIDRs []string, cdnStatuses map[string]CDNStatus) (*snapshot, error) {
 	data := &snapshot{
-		cfg:            cfg,
-		exactRoutes:    make(map[string]routeItem),
-		wildcardRoutes: make([]wildcardItem, 0),
-		certificates:   make(map[string]*tls.Certificate),
+		cfg:             cfg,
+		cdnProviderCIDRs: make(map[string][]netip.Prefix),
+		exactRoutes:     make(map[string]routeItem),
+		wildcardRoutes:  make([]wildcardItem, 0),
+		certificates:    make(map[string]*tls.Certificate),
 	}
 
 	allCIDRs := make([]string, 0, len(cfg.Security.AllowedCIDRs)+len(dynamicCIDRs))
@@ -320,6 +356,24 @@ func buildSnapshot(cfg Config, configPath string, dynamicCIDRs []string) (*snaps
 				return nil, fmt.Errorf("非法 CIDR %q: %w", cidrText, err)
 			}
 			data.allowedCIDRs = append(data.allowedCIDRs, prefix)
+		}
+	}
+
+	for name, status := range cdnStatuses {
+		provider := strings.ToLower(strings.TrimSpace(name))
+		if provider == "" || len(status.CIDRs) == 0 {
+			continue
+		}
+		for _, cidrText := range status.CIDRs {
+			value := strings.TrimSpace(cidrText)
+			if value == "" {
+				continue
+			}
+			prefix, err := netip.ParsePrefix(value)
+			if err != nil {
+				return nil, fmt.Errorf("非法 CDN CIDR %q: %w", value, err)
+			}
+			data.cdnProviderCIDRs[provider] = append(data.cdnProviderCIDRs[provider], prefix)
 		}
 	}
 

@@ -1419,10 +1419,27 @@ components:
           type: array
           items:
             type: string
+        allowedCdnProviders:
+          type: array
+          items:
+            type: string
+        cdnProviderSettings:
+          type: object
+          additionalProperties:
+            $ref: "#/components/schemas/CDNProviderSetting"
         blockPageHtml:
           type: string
         enableHsts:
           type: boolean
+    CDNProviderSetting:
+      type: object
+      properties:
+        apiKey:
+          type: string
+        secretKey:
+          type: string
+        option:
+          type: string
     RoutingConfig:
       type: object
       properties:

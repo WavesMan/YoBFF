@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 
 	"YoBFF/internal/config"
@@ -168,6 +169,39 @@ func (s *Store) GetSite(siteID string) (Site, error) {
 		return Site{}, err
 	}
 	return site, nil
+}
+
+// GetSiteConfigByHostname 按站点域名读取当前配置，用于数据面按站点执行独立安全策略。
+// 参数：hostname 为请求域名。
+// 返回：站点配置与错误。
+// 异常：站点不存在时返回 ErrSiteNotFound，数据库异常时返回对应错误。
+func (s *Store) GetSiteConfigByHostname(hostname string) (config.Config, error) {
+	if s == nil || s.db == nil {
+		return config.Config{}, errors.New("db not ready")
+	}
+	value := normalizeHostname(hostname)
+	if value == "" {
+		return config.Config{}, ErrSiteNotFound
+	}
+	var payload string
+	err := s.db.QueryRow(
+		`SELECT config_json FROM sites WHERE lower(hostname) = ? LIMIT 1`,
+		value,
+	).Scan(&payload)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return config.Config{}, ErrSiteNotFound
+		}
+		return config.Config{}, err
+	}
+	if payload == "" {
+		return config.Config{}, nil
+	}
+	var cfg config.Config
+	if err := json.Unmarshal([]byte(payload), &cfg); err != nil {
+		return config.Config{}, err
+	}
+	return cfg, nil
 }
 
 // ListSites 获取站点列表，用于 hostname/IP 分类视图快速呈现。
@@ -450,4 +484,8 @@ func (s *Store) UpdateSiteLogStream(siteID string, filterQuery string) (SiteLogS
 		FilterQuery: filterQuery,
 		UpdatedAt:   updatedAt,
 	}, nil
+}
+
+func normalizeHostname(hostname string) string {
+	return strings.ToLower(strings.TrimSpace(hostname))
 }

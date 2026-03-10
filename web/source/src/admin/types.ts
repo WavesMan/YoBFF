@@ -34,8 +34,16 @@ export type RoutingConfig = {
   domains?: DomainRule[]
 }
 
+export type CDNProviderSetting = {
+  apiKey?: string
+  secretKey?: string
+  option?: string
+}
+
 export type SecurityConfig = {
   allowedCidrs?: string[]
+  allowedCdnProviders?: string[]
+  cdnProviderSettings?: Record<string, CDNProviderSetting>
   blockPageHtml?: string
   enableHsts?: boolean
 }

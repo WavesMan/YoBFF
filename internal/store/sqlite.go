@@ -108,6 +108,14 @@ func (s *Store) init() error {
 	return err
 }
 
+// Close 关闭数据库连接。
+func (s *Store) Close() error {
+	if s != nil && s.db != nil {
+		return s.db.Close()
+	}
+	return nil
+}
+
 // SaveVersion 写入全局配置版本，用于配置变更回溯。
 // 参数：cfg 为配置对象，operator 为操作人，source 为变更来源。
 // 返回：版本记录。
@@ -215,7 +223,8 @@ func (s *Store) SaveAudit(action string, target string, operator string, detail 
 	createdAt := time.Now().UTC().Format(time.RFC3339)
 	detailText := ""
 	if detail != nil {
-		payload, err := json.Marshal(detail)
+		var payload []byte
+		payload, err = json.Marshal(detail)
 		if err != nil {
 			return err
 		}

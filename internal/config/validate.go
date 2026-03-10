@@ -28,6 +28,34 @@ func ValidateConfig(cfg Config, configPath string) []ValidationIssue {
 		}
 	}
 
+	supportedCDNProviders := map[string]struct{}{
+		"aliyun":     {},
+		"cloudflare": {},
+		"tencent":    {},
+	}
+	seenProviders := make(map[string]struct{}, len(cfg.Security.AllowedCDNProviders))
+	for idx, provider := range cfg.Security.AllowedCDNProviders {
+		value := strings.ToLower(strings.TrimSpace(provider))
+		if value == "" {
+			continue
+		}
+		if _, ok := supportedCDNProviders[value]; !ok {
+			issues = append(issues, ValidationIssue{
+				Path:    fmt.Sprintf("security.allowedCdnProviders[%d]", idx),
+				Message: "cdn provider is not supported",
+			})
+			continue
+		}
+		if _, exists := seenProviders[value]; exists {
+			issues = append(issues, ValidationIssue{
+				Path:    fmt.Sprintf("security.allowedCdnProviders[%d]", idx),
+				Message: "cdn provider is duplicated",
+			})
+			continue
+		}
+		seenProviders[value] = struct{}{}
+	}
+
 	for idx, rule := range cfg.Routing.Domains {
 		domain := strings.TrimSpace(rule.Domain)
 		if domain == "" {

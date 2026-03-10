@@ -11,22 +11,25 @@ import (
 
 	"YoBFF/internal/config"
 	"YoBFF/internal/logging"
+	"YoBFF/internal/store"
 )
 
 // Handler 封装数据平面的流量校验与反向代理能力。
 type Handler struct {
 	manager *config.Manager
 	logs    *logging.Pipeline
+	store   *store.Store
 }
 
 // NewHandler 创建数据平面请求处理器。
-// 参数：manager 为配置管理器，logs 为异步日志管线。
+// 参数：manager 为配置管理器，logs 为异步日志管线，store 为配置存储。
 // 返回：可挂载到 HTTP Server 的处理器。
 // 异常：无。
-func NewHandler(manager *config.Manager, logs *logging.Pipeline) *Handler {
+func NewHandler(manager *config.Manager, logs *logging.Pipeline, store *store.Store) *Handler {
 	return &Handler{
 		manager: manager,
 		logs:    logs,
+		store:   store,
 	}
 }
 
@@ -40,10 +43,86 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	host := normalizeHost(r.Host)
 	cfg := h.manager.CurrentConfig()
 
-	if !h.manager.IsIPAllowed(clientIP) || !h.manager.IsHostAuthorized(host) {
+	// 1. 尝试加载站点级配置
+	var siteCfg config.Config
+	useSiteConfig := false
+	if h.store != nil {
+		if sc, err := h.store.GetSiteConfigByHostname(host); err == nil {
+			siteCfg = sc
+			useSiteConfig = true
+		}
+	}
+
+	// 2. 执行 IP 访问控制
+	allowed := false
+	denialReason := ""
+
+	if useSiteConfig {
+		// 站点级策略：只要配置了白名单（CIDR 或 CDN），则必须命中其一
+		hasCDNRules := len(siteCfg.Security.AllowedCDNProviders) > 0
+		hasCIDRRules := len(siteCfg.Security.AllowedCIDRs) > 0
+
+		if !hasCDNRules && !hasCIDRRules {
+			allowed = true
+		} else {
+			// 优先检查 CDN 提供商
+			if hasCDNRules {
+				if h.manager.IsIPAllowedByProviders(clientIP, siteCfg.Security.AllowedCDNProviders) {
+					allowed = true
+				} else {
+					denialReason = "cdn source check failed"
+				}
+			}
+
+			// 若 CDN 未命中且有自定义 CIDR，检查 CIDR
+			if !allowed && hasCIDRRules {
+				for _, cidr := range siteCfg.Security.AllowedCIDRs {
+					if prefix, err := netip.ParsePrefix(cidr); err == nil {
+						if prefix.Contains(clientIP) {
+							allowed = true
+							break
+						}
+					}
+				}
+				if !allowed {
+					// 若同时配置了 CDN 和 CIDR，且都未命中，记录更具体的失败原因
+					if denialReason != "" {
+						denialReason = "both cdn and ip whitelist check failed"
+					} else {
+						denialReason = "ip whitelist check failed"
+					}
+				}
+			}
+		}
+	} else {
+		// 全局策略
+		allowed = h.manager.IsIPAllowed(clientIP)
+		if !allowed {
+			denialReason = "global ip whitelist check failed"
+		}
+	}
+
+	// 检查域名授权
+	hostAuthorized := h.manager.IsHostAuthorized(host)
+	if !hostAuthorized && allowed {
+		denialReason = "host not authorized"
+	}
+
+	if !allowed || !hostAuthorized {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.WriteHeader(http.StatusForbidden)
-		_, _ = w.Write([]byte(cfg.Security.BlockPageHTML))
+
+		blockPage := cfg.Security.BlockPageHTML
+		if useSiteConfig && siteCfg.Security.BlockPageHTML != "" {
+			blockPage = siteCfg.Security.BlockPageHTML
+		}
+		_, _ = w.Write([]byte(blockPage))
+
+		msg := "source check failed"
+		if denialReason != "" {
+			msg = denialReason
+		}
+
 		h.logs.Emit(logging.Event{
 			Level:     "warn",
 			Type:      "blocked",
@@ -53,7 +132,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			Path:      r.URL.Path,
 			Status:    http.StatusForbidden,
 			LatencyMS: time.Since(start).Milliseconds(),
-			Message:   "source check failed",
+			Message:   msg,
 		})
 		return
 	}

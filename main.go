@@ -117,12 +117,13 @@ func run(
 	logPipeline := logging.NewPipeline(4096, logger)
 	defer logPipeline.Close()
 
-	dataHandler := gateway.NewHandler(manager, logPipeline)
 	dbPath := config.EnvOrDefault("CONFIG_DB_PATH", "config/config.db")
 	configStore, err := store.NewSQLiteStore(dbPath)
 	if err != nil {
 		return fmt.Errorf("初始化配置存储失败: %w", err)
 	}
+
+	dataHandler := gateway.NewHandler(manager, logPipeline, configStore)
 	adminSrv := admin.NewServer(manager, logRuntime, logPipeline, configStore)
 	uiHandler, err := buildUIHandler()
 	if err != nil {
