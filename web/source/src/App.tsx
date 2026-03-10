@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { FiActivity, FiEye, FiSettings, FiShield, FiShuffle, FiSliders } from 'react-icons/fi'
+import { FiActivity, FiEye, FiSettings, FiShield, FiShuffle, FiSliders, FiLock } from 'react-icons/fi'
 import './App.css'
 import {
   applyConfig as applyConfigRequest,
@@ -35,6 +35,7 @@ import { ConfigPanel } from './sections/ConfigPanel'
 import { ObservabilitySection } from './sections/ObservabilitySection'
 import { OverviewSection } from './sections/OverviewSection'
 import { SecuritySection } from './sections/SecuritySection'
+import { CertificatesSection } from './sections/CertificatesSection'
 import { SystemSection } from './sections/SystemSection'
 import { TrafficSection } from './sections/TrafficSection'
 
@@ -42,6 +43,7 @@ const menuItems = [
   { key: 'dashboard', label: '仪表盘', icon: <FiActivity /> },
   { key: 'traffic', label: '流量管理', icon: <FiShuffle /> },
   { key: 'security', label: '安全防护', icon: <FiShield /> },
+  { key: 'certificates', label: '证书管理', icon: <FiLock /> },
   { key: 'observability', label: '观测中心', icon: <FiEye /> },
   { key: 'system', label: '系统设置', icon: <FiSliders /> },
   { key: 'config', label: '配置应用', icon: <FiSettings /> },
@@ -99,11 +101,15 @@ function App() {
       },
       security: {
         title: '安全防护',
-        subtitle: '访问控制与防护策略集中管理',
+        subtitle: '防火墙、WAF 与访问控制策略',
+      },
+      certificates: {
+        title: '证书管理',
+        subtitle: 'SSL/TLS 证书生命周期管理',
       },
       observability: {
         title: '观测中心',
-        subtitle: '日志与指标的实时观测视图',
+        subtitle: '日志检索、监控大盘与链路追踪',
       },
       system: {
         title: '系统设置',
@@ -654,6 +660,9 @@ function App() {
               onAllowedCidrsChange={handleAllowedCidrsChange}
               onBlockPageChange={handleBlockPageChange}
             />
+          )}
+          {activeSection === 'certificates' && (
+            <CertificatesSection token={token || ''} />
           )}
           {activeSection === 'observability' && (
             <ObservabilitySection

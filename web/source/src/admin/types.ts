@@ -78,11 +78,21 @@ export type RateLimitConfig = {
   burst?: number
 }
 
+export type SSLCertificate = {
+  id: string
+  name: string
+  domains: string[]
+  notAfter: string
+  issuer: string
+  createdAt: string
+}
+
 export type Config = {
   dataPlane?: {
     httpListenAddr?: string
     httpsListenAddr?: string
     enableHttps?: boolean
+    certId?: string
   }
   controlPlane?: {
     adminListenAddr?: string
@@ -96,6 +106,7 @@ export type Config = {
   routing?: RoutingConfig
   rateLimit?: RateLimitConfig
   certificates?: Certificate[]
+  sslCertificates?: SSLCertificate[]
   cdnSync?: CDNSyncConfig
 }
 

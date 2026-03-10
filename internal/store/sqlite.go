@@ -98,6 +98,16 @@ func (s *Store) init() error {
 			filter_query TEXT NOT NULL,
 			updated_at TEXT NOT NULL
 		);
+		CREATE TABLE IF NOT EXISTS certificates (
+			id TEXT PRIMARY KEY,
+			name TEXT NOT NULL,
+			domains TEXT NOT NULL,
+			not_after TEXT NOT NULL,
+			issuer TEXT NOT NULL,
+			cert_pem TEXT NOT NULL,
+			key_pem TEXT NOT NULL,
+			created_at TEXT NOT NULL
+		);
 		CREATE INDEX IF NOT EXISTS idx_config_versions_created_at ON config_versions(created_at DESC);
 		CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at DESC);
 		CREATE INDEX IF NOT EXISTS idx_sites_hostname ON sites(hostname);
@@ -252,4 +262,78 @@ func randomID() (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(buffer), nil
+}
+
+// CreateCertificate 创建证书记录。
+func (s *Store) CreateCertificate(cert *config.SSLCertificate) error {
+	domains, _ := json.Marshal(cert.Domains)
+	_, err := s.db.Exec(
+		`INSERT INTO certificates (id, name, domains, not_after, issuer, cert_pem, key_pem, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		cert.ID,
+		cert.Name,
+		string(domains),
+		cert.NotAfter.Format(time.RFC3339),
+		cert.Issuer,
+		cert.CertPEM,
+		cert.KeyPEM,
+		cert.CreatedAt.Format(time.RFC3339),
+	)
+	return err
+}
+
+// ListCertificates 分页查询证书。
+func (s *Store) ListCertificates(page, pageSize int) ([]config.SSLCertificate, int, error) {
+	var total int
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM certificates`).Scan(&total)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	rows, err := s.db.Query(
+		`SELECT id, name, domains, not_after, issuer, cert_pem, key_pem, created_at FROM certificates ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+		pageSize,
+		(page-1)*pageSize,
+	)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	var certs []config.SSLCertificate
+	for rows.Next() {
+		var cert config.SSLCertificate
+		var domains, notAfter, createdAt string
+		err := rows.Scan(&cert.ID, &cert.Name, &domains, &notAfter, &cert.Issuer, &cert.CertPEM, &cert.KeyPEM, &createdAt)
+		if err != nil {
+			return nil, 0, err
+		}
+		_ = json.Unmarshal([]byte(domains), &cert.Domains)
+		cert.NotAfter, _ = time.Parse(time.RFC3339, notAfter)
+		cert.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
+		certs = append(certs, cert)
+	}
+	return certs, total, nil
+}
+
+// DeleteCertificate 删除证书。
+func (s *Store) DeleteCertificate(id string) error {
+	_, err := s.db.Exec(`DELETE FROM certificates WHERE id = ?`, id)
+	return err
+}
+
+// GetCertificate 获取指定证书。
+func (s *Store) GetCertificate(id string) (*config.SSLCertificate, error) {
+	var cert config.SSLCertificate
+	var domains, notAfter, createdAt string
+	err := s.db.QueryRow(
+		`SELECT id, name, domains, not_after, issuer, cert_pem, key_pem, created_at FROM certificates WHERE id = ?`,
+		id,
+	).Scan(&cert.ID, &cert.Name, &domains, &notAfter, &cert.Issuer, &cert.CertPEM, &cert.KeyPEM, &createdAt)
+	if err != nil {
+		return nil, err
+	}
+	_ = json.Unmarshal([]byte(domains), &cert.Domains)
+	cert.NotAfter, _ = time.Parse(time.RFC3339, notAfter)
+	cert.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
+	return &cert, nil
 }

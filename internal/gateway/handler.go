@@ -12,6 +12,8 @@ import (
 	"YoBFF/internal/config"
 	"YoBFF/internal/logging"
 	"YoBFF/internal/store"
+
+	"github.com/google/uuid"
 )
 
 // Handler 封装数据平面的流量校验与反向代理能力。
@@ -39,9 +41,12 @@ func NewHandler(manager *config.Manager, logs *logging.Pipeline, store *store.St
 // 异常：校验失败返回 403，路由或上游异常返回 502。
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
+	reqID := uuid.New().String()
+	w.Header().Set("X-Request-ID", reqID)
+
 	clientIP := parseClientIP(r.RemoteAddr)
 	host := normalizeHost(r.Host)
-	cfg := h.manager.CurrentConfig()
+	// cfg := h.manager.CurrentConfig() // 已移除未使用的配置加载
 
 	// 1. 尝试加载站点级配置
 	var siteCfg config.Config
@@ -112,10 +117,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.WriteHeader(http.StatusForbidden)
 
-		blockPage := cfg.Security.BlockPageHTML
-		if useSiteConfig && siteCfg.Security.BlockPageHTML != "" {
-			blockPage = siteCfg.Security.BlockPageHTML
-		}
+		blockPage := renderBlockPage(reqID, clientIP.String())
 		_, _ = w.Write([]byte(blockPage))
 
 		msg := "source check failed"
@@ -126,6 +128,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.logs.Emit(logging.Event{
 			Level:     "warn",
 			Type:      "blocked",
+			RequestID: reqID,
 			ClientIP:  clientIP.String(),
 			Host:      host,
 			Method:    r.Method,
@@ -143,6 +146,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.logs.Emit(logging.Event{
 			Level:     "error",
 			Type:      "proxy",
+			RequestID: reqID,
 			ClientIP:  clientIP.String(),
 			Host:      host,
 			Method:    r.Method,
@@ -160,6 +164,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.logs.Emit(logging.Event{
 			Level:     "info",
 			Type:      "proxy",
+			RequestID: reqID,
 			ClientIP:  clientIP.String(),
 			Host:      host,
 			Method:    r.Method,
@@ -178,6 +183,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		director(req)
 		req.Host = r.Host
 		req.Header.Set("X-Real-IP", clientIP.String())
+		req.Header.Set("X-Request-ID", reqID)
 		appendXForwardedFor(req.Header, clientIP.String())
 		if r.TLS != nil {
 			req.Header.Set("X-Forwarded-Proto", "https")
@@ -193,6 +199,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	h.logs.Emit(logging.Event{
 		Level:     "info",
 		Type:      "proxy",
+		RequestID: reqID,
 		ClientIP:  clientIP.String(),
 		Host:      host,
 		Method:    r.Method,

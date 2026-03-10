@@ -73,6 +73,10 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("/api/v1/log/level", withAuth(http.HandlerFunc(s.logLevel), s.manager))
 	mux.Handle("/api/v1/log/stats", withAuth(http.HandlerFunc(s.logStats), s.manager))
 
+	// SSL 证书管理接口
+	mux.Handle("/api/v1/certs", withAuth(http.HandlerFunc(s.handleCertificates), s.manager))
+	mux.Handle("/api/v1/certs/", withAuth(http.HandlerFunc(s.handleCertificateDetail), s.manager))
+
 	handler := http.Handler(mux)
 	return s.WrapHandler(handler)
 }
@@ -226,7 +230,7 @@ func (s *Server) rollbackConfig(w http.ResponseWriter, r *http.Request) {
 		writeValidationError(w, http.StatusBadRequest, "config_invalid", "config validation failed", issues, r)
 		return
 	}
-	if err := s.manager.Apply(cfg); err != nil {
+	if err = s.manager.Apply(cfg); err != nil {
 		writeError(w, http.StatusBadRequest, "config_apply_failed", err.Error(), r)
 		return
 	}

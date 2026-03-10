@@ -583,6 +583,88 @@ paths:
           $ref: "#/components/responses/RateLimited"
         "503":
           $ref: "#/components/responses/AuthUnavailable"
+  /api/v1/certs:
+    get:
+      summary: 获取 SSL 证书列表
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+            default: 1
+          required: false
+        - in: query
+          name: pageSize
+          schema:
+            type: integer
+            default: 15
+          required: false
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CertificateListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "503":
+          $ref: "#/components/responses/AuthUnavailable"
+    post:
+      summary: 上传 SSL 证书
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                cert:
+                  type: string
+                  format: binary
+                key:
+                  type: string
+                  format: binary
+                name:
+                  type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SSLCertificate"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "503":
+          $ref: "#/components/responses/AuthUnavailable"
+  /api/v1/certs/{id}:
+    delete:
+      summary: 删除 SSL 证书
+      parameters:
+        - in: path
+          name: id
+          schema:
+            type: string
+          required: true
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/BadRequest"
+        "503":
+          $ref: "#/components/responses/AuthUnavailable"
   /api/v1/sites/{site_id}/config:
     parameters:
       - in: path
@@ -1320,6 +1402,38 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ConfigDiffItem"
+    CertificateListResponse:
+      type: object
+      required:
+        - items
+        - total
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/SSLCertificate"
+        total:
+          type: integer
+          format: int64
+    SSLCertificate:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        domains:
+          type: array
+          items:
+            type: string
+        notAfter:
+          type: string
+          format: date-time
+        issuer:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
     Config:
       type: object
       properties:
@@ -1331,12 +1445,16 @@ components:
           $ref: "#/components/schemas/SecurityConfig"
         routing:
           $ref: "#/components/schemas/RoutingConfig"
+        cdnSync:
+          $ref: "#/components/schemas/CDNSyncConfig"
         certificates:
           type: array
           items:
             $ref: "#/components/schemas/Certificate"
-        cdnSync:
-          $ref: "#/components/schemas/CDNSyncConfig"
+        sslCertificates:
+          type: array
+          items:
+            $ref: "#/components/schemas/SSLCertificate"
     CDNSyncConfig:
       type: object
       properties:

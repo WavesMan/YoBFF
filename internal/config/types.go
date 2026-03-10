@@ -1,13 +1,28 @@
 package config
 
+import "time"
+
+// SSLCertificate 表示 SSL 证书元数据及内容。
+type SSLCertificate struct {
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`      // 用户备注名
+	Domains   []string  `json:"domains"`   // 证书包含的域名 (CN + SANs)
+	NotAfter  time.Time `json:"notAfter"`  // 过期时间
+	Issuer    string    `json:"issuer"`    // 颁发机构
+	CertPEM   string    `json:"certPem"`   // 证书内容
+	KeyPEM    string    `json:"keyPem"`    // 私钥内容
+	CreatedAt time.Time `json:"createdAt"` // 创建时间
+}
+
 // Config 表示网关完整运行配置。
 type Config struct {
-	DataPlane    DataPlaneConfig    `json:"dataPlane"`
-	ControlPlane ControlPlaneConfig `json:"controlPlane"`
-	Security     SecurityConfig     `json:"security"`
-	Routing      RoutingConfig      `json:"routing"`
-	CDNSync      CDNSyncConfig      `json:"cdnSync"`
-	Certificates []Certificate      `json:"certificates"`
+	DataPlane       DataPlaneConfig    `json:"dataPlane"`
+	ControlPlane    ControlPlaneConfig `json:"controlPlane"`
+	Security        SecurityConfig     `json:"security"`
+	Routing         RoutingConfig      `json:"routing"`
+	CDNSync         CDNSyncConfig      `json:"cdnSync"`
+	Certificates    []Certificate      `json:"certificates"`
+	SSLCertificates []SSLCertificate   `json:"sslCertificates"`
 }
 
 // DataPlaneConfig 表示数据平面监听参数。

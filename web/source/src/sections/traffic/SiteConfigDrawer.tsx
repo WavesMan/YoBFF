@@ -11,7 +11,8 @@ import {
   FiX,
   FiZap,
   FiChevronDown,
-  FiChevronRight
+  FiChevronRight,
+  FiCheck
 } from 'react-icons/fi'
 import { BsToggleOn, BsToggleOff } from 'react-icons/bs'
 import {
@@ -22,9 +23,10 @@ import {
   updateSiteConfig,
   validateConfig,
   fetchSiteLogStream,
-  updateSiteLogStream
+  updateSiteLogStream,
+  fetchCertificates
 } from '../../admin/api'
-import type { Config, ConfigVersion, DomainRule, Site, SiteLogStream } from '../../admin/types'
+import type { Config, ConfigVersion, DomainRule, Site, SiteLogStream, SSLCertificate } from '../../admin/types'
 
 type SiteConfigDrawerProps = {
   token: string
@@ -53,9 +55,44 @@ export function SiteConfigDrawer({ token, operator, siteId, onClose }: SiteConfi
     forceHttps: true
   })
   
-  // New Cert Domain State
-  const [newCertDomain, setNewCertDomain] = useState('')
+
   const [cdnExpanded, setCdnExpanded] = useState(true)
+  const [certs, setCerts] = useState<SSLCertificate[]>([])
+  const [showCertSelector, setShowCertSelector] = useState(false)
+
+  // Load available certificates when drawer opens or on demand
+  const loadCertificates = useCallback(async () => {
+    try {
+      const { items } = await fetchCertificates(token, 1, 100) // Load all for selection
+      setCerts(items || [])
+    } catch (e) {
+      console.error("Failed to load certificates", e)
+    }
+  }, [token])
+
+  useEffect(() => {
+    if (activeTab === 'security') {
+      loadCertificates()
+    }
+  }, [activeTab, loadCertificates])
+
+  // Filter certificates based on site hostname
+  const filteredCerts = certs.filter(cert => {
+    if (!site?.hostname || site.hostname.match(/^(\d{1,3}\.){3}\d{1,3}$/) || site.hostname.includes(':')) {
+      return true // Show all if IP or no hostname
+    }
+    const host = site.hostname.toLowerCase()
+    // Simple domain matching: cert domain should cover site hostname
+    // Supports wildcards *.example.com matches sub.example.com
+    return (cert.domains || []).some((d: string) => {
+      const domain = d.toLowerCase()
+      if (domain.startsWith('*.')) {
+        const suffix = domain.substring(2)
+        return host.endsWith(suffix) && host.split('.').length === suffix.split('.').length + 1
+      }
+      return domain === host
+    })
+  })
 
   useEffect(() => {
     let interval: ReturnType<typeof setInterval>
@@ -220,15 +257,7 @@ export function SiteConfigDrawer({ token, operator, siteId, onClose }: SiteConfi
       }
     }))
   }
-  
-  const handleAddCert = () => {
-    if (!newCertDomain) return
-    updateConfig(prev => ({
-      ...prev,
-      certificates: [...(prev.certificates || []), { domain: newCertDomain }]
-    }))
-    setNewCertDomain('')
-  }
+
   
   const handleRemoveCert = (index: number) => {
     updateConfig(prev => ({
@@ -487,18 +516,6 @@ export function SiteConfigDrawer({ token, operator, siteId, onClose }: SiteConfi
                       )}
                     </tbody>
                   </table>
-                  
-                  <div className="form-row" style={{ marginTop: 15 }}>
-                    <div className="form-field">
-                      <input 
-                        className="input" 
-                        placeholder="输入域名 (例如: example.com)"
-                        value={newCertDomain}
-                        onChange={e => setNewCertDomain(e.target.value)}
-                      />
-                    </div>
-                    <button className="button secondary" onClick={handleAddCert}>添加证书</button>
-                  </div>
                 </div>
               )}
 
@@ -514,10 +531,19 @@ export function SiteConfigDrawer({ token, operator, siteId, onClose }: SiteConfi
                     <div className="toggle-row">
                       <div 
                         className="toggle-item"
-                        onClick={() => updateConfig(prev => ({
-                          ...prev,
-                          dataPlane: { ...prev.dataPlane, enableHttps: !prev.dataPlane?.enableHttps }
-                        }))}
+                        onClick={() => {
+                          // Toggle HTTPS logic
+                          if (config.dataPlane?.enableHttps) {
+                            // Disable HTTPS
+                            updateConfig(prev => ({
+                              ...prev,
+                              dataPlane: { ...prev.dataPlane, enableHttps: false }
+                            }))
+                          } else {
+                            // Enable HTTPS - Require certificate selection
+                            setShowCertSelector(true)
+                          }
+                        }}
                       >
                         {config.dataPlane?.enableHttps ? (
                           <BsToggleOn size={24} color="#10b981" />
@@ -527,6 +553,59 @@ export function SiteConfigDrawer({ token, operator, siteId, onClose }: SiteConfi
                         <span>启用全局 HTTPS</span>
                       </div>
                       
+                      {/* Certificate Selection Modal/Area */}
+                      {showCertSelector && (
+                        <div className="modal-overlay" onClick={() => setShowCertSelector(false)}>
+                          <div className="modal-content" onClick={e => e.stopPropagation()}>
+                            <div className="modal-header">
+                              <h4>选择 SSL 证书</h4>
+                              <button className="icon-button" onClick={() => setShowCertSelector(false)}>
+                                <FiX />
+                              </button>
+                            </div>
+                            <div className="modal-body">
+                              <p className="muted" style={{ marginBottom: '15px' }}>
+                                请为 {site?.hostname} 选择一个匹配的 SSL 证书以启用 HTTPS。
+                              </p>
+                              
+                              <div className="cert-list">
+                                {filteredCerts.length === 0 ? (
+                                  <div className="empty-state">
+                                    没有找到匹配的证书，请先在证书管理中上传。
+                                  </div>
+                                ) : (
+                                  filteredCerts.map(cert => (
+                                    <div 
+                                      key={cert.id} 
+                                      className={`cert-item ${config.dataPlane?.certId === cert.id ? 'selected' : ''}`}
+                                      onClick={() => {
+                                        updateConfig(prev => ({
+                                          ...prev,
+                                          dataPlane: { 
+                                            ...prev.dataPlane, 
+                                            enableHttps: true,
+                                            certId: cert.id 
+                                          }
+                                        }))
+                                        setShowCertSelector(false)
+                                      }}
+                                    >
+                                      <div className="cert-info">
+                                        <div className="cert-name">{cert.name}</div>
+                                        <div className="cert-domains">
+                                          {cert.domains.join(', ')}
+                                        </div>
+                                      </div>
+                                      {config.dataPlane?.certId === cert.id && <FiCheck />}
+                                    </div>
+                                  ))
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
                       <div 
                         className="toggle-item"
                         onClick={() => updateConfig(prev => ({

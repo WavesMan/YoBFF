@@ -27,15 +27,15 @@ type wildcardItem struct {
 }
 
 type snapshot struct {
-	cfg            Config
-	allowAll       bool
-	allowedCIDRs   []netip.Prefix
+	cfg              Config
+	allowAll         bool
+	allowedCIDRs     []netip.Prefix
 	cdnProviderCIDRs map[string][]netip.Prefix
-	exactRoutes    map[string]routeItem
-	wildcardRoutes []wildcardItem
-	defaultRoute   *routeItem
-	certificates   map[string]*tls.Certificate
-	defaultCert    *tls.Certificate
+	exactRoutes      map[string]routeItem
+	wildcardRoutes   []wildcardItem
+	defaultRoute     *routeItem
+	certificates     map[string]*tls.Certificate
+	defaultCert      *tls.Certificate
 }
 
 // RouteMatch 表示路由解析成功后的目标结果。
@@ -294,6 +294,15 @@ func (m *Manager) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, 
 	if cert, ok := data.certificates[serverName]; ok {
 		return cert, nil
 	}
+
+	// 尝试泛域名匹配 (例如 sub.example.com -> *.example.com)
+	if idx := strings.IndexByte(serverName, '.'); idx >= 0 {
+		wildcardName := "*" + serverName[idx:]
+		if cert, ok := data.certificates[wildcardName]; ok {
+			return cert, nil
+		}
+	}
+
 	if data.defaultCert != nil {
 		return data.defaultCert, nil
 	}
@@ -336,11 +345,11 @@ func fillDefaults(cfg Config) Config {
 // 异常：CIDR、路由或证书加载失败时返回错误。
 func buildSnapshot(cfg Config, configPath string, dynamicCIDRs []string, cdnStatuses map[string]CDNStatus) (*snapshot, error) {
 	data := &snapshot{
-		cfg:             cfg,
+		cfg:              cfg,
 		cdnProviderCIDRs: make(map[string][]netip.Prefix),
-		exactRoutes:     make(map[string]routeItem),
-		wildcardRoutes:  make([]wildcardItem, 0),
-		certificates:    make(map[string]*tls.Certificate),
+		exactRoutes:      make(map[string]routeItem),
+		wildcardRoutes:   make([]wildcardItem, 0),
+		certificates:     make(map[string]*tls.Certificate),
 	}
 
 	allCIDRs := make([]string, 0, len(cfg.Security.AllowedCIDRs)+len(dynamicCIDRs))
@@ -422,39 +431,71 @@ func buildSnapshot(cfg Config, configPath string, dynamicCIDRs []string, cdnStat
 // 返回：加载失败错误。
 // 异常：文件读取失败或证书解析失败时返回错误。
 func loadCertificates(data *snapshot, configPath string) error {
-	if len(data.cfg.Certificates) == 0 {
-		return nil
-	}
 	baseDir := filepath.Dir(configPath)
-	for idx, item := range data.cfg.Certificates {
-		domain := normalizeHost(item.Domain)
-		if domain == "" {
-			return fmt.Errorf("证书 domain 不能为空")
-		}
-		certPEM := []byte(item.CertPEM)
-		keyPEM := []byte(item.KeyPEM)
-		var err error
-		if item.CertFile != "" {
-			certPEM, err = os.ReadFile(filepath.Join(baseDir, item.CertFile))
-			if err != nil {
-				return fmt.Errorf("读取证书文件失败 %s: %w", item.CertFile, err)
+
+	// 1. 加载旧版配置证书 (Config.Certificates)
+	if len(data.cfg.Certificates) > 0 {
+		for idx, item := range data.cfg.Certificates {
+			domain := normalizeHost(item.Domain)
+			if domain == "" {
+				return fmt.Errorf("证书 domain 不能为空")
 			}
-		}
-		if item.KeyFile != "" {
-			keyPEM, err = os.ReadFile(filepath.Join(baseDir, item.KeyFile))
-			if err != nil {
-				return fmt.Errorf("读取私钥文件失败 %s: %w", item.KeyFile, err)
+			certPEM := []byte(item.CertPEM)
+			keyPEM := []byte(item.KeyPEM)
+			var err error
+			if item.CertFile != "" {
+				certPEM, err = os.ReadFile(filepath.Join(baseDir, item.CertFile))
+				if err != nil {
+					return fmt.Errorf("读取证书文件失败 %s: %w", item.CertFile, err)
+				}
 			}
-		}
-		cert, err := tls.X509KeyPair(certPEM, keyPEM)
-		if err != nil {
-			return fmt.Errorf("加载证书失败 domain=%s: %w", domain, err)
-		}
-		data.certificates[domain] = &cert
-		if idx == 0 {
-			data.defaultCert = &cert
+			if item.KeyFile != "" {
+				keyPEM, err = os.ReadFile(filepath.Join(baseDir, item.KeyFile))
+				if err != nil {
+					return fmt.Errorf("读取私钥文件失败 %s: %w", item.KeyFile, err)
+				}
+			}
+			cert, err := tls.X509KeyPair(certPEM, keyPEM)
+			if err != nil {
+				return fmt.Errorf("加载证书失败 domain=%s: %w", domain, err)
+			}
+			data.certificates[domain] = &cert
+			if idx == 0 && data.defaultCert == nil {
+				data.defaultCert = &cert
+			}
 		}
 	}
+
+	// 2. 加载新版管理证书 (Config.SSLCertificates)
+	if len(data.cfg.SSLCertificates) > 0 {
+		for idx, item := range data.cfg.SSLCertificates {
+			// 跳过没有内容的证书（可能是仅元数据）
+			if item.CertPEM == "" || item.KeyPEM == "" {
+				continue
+			}
+
+			cert, err := tls.X509KeyPair([]byte(item.CertPEM), []byte(item.KeyPEM))
+			if err != nil {
+				return fmt.Errorf("加载 SSL 证书失败 (id=%s, name=%s): %w", item.ID, item.Name, err)
+			}
+
+			// 将证书关联到所有包含的域名
+			for _, domain := range item.Domains {
+				normalized := normalizeHost(domain)
+				if normalized == "" {
+					continue
+				}
+				// 后加载的覆盖先加载的（新版管理优先）
+				data.certificates[normalized] = &cert
+			}
+
+			// 如果还没有默认证书，使用第一个有效的 SSL 证书
+			if data.defaultCert == nil && idx == 0 {
+				data.defaultCert = &cert
+			}
+		}
+	}
+
 	return nil
 }
 

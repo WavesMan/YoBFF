@@ -13,6 +13,7 @@ type Event struct {
 	Time      time.Time `json:"time"`
 	Level     string    `json:"level"`
 	Type      string    `json:"type"`
+	RequestID string    `json:"requestId"`
 	ClientIP  string    `json:"clientIp"`
 	Host      string    `json:"host"`
 	Method    string    `json:"method"`
@@ -111,17 +112,19 @@ func (p *Pipeline) Close() {
 // 异常：无，单条日志写入失败不会中断消费循环。
 func (p *Pipeline) worker() {
 	for event := range p.ch {
-		logger := p.logger.With(
+		fields := []zap.Field{
 			zap.String("type", event.Type),
+			zap.String("request_id", event.RequestID),
 			zap.String("client_ip", event.ClientIP),
 			zap.String("host", event.Host),
 			zap.String("method", event.Method),
 			zap.String("path", event.Path),
 			zap.Int("status", event.Status),
 			zap.Int64("latency_ms", event.LatencyMS),
-		)
-		level := strings.ToLower(strings.TrimSpace(event.Level))
-		switch level {
+		}
+		logger := p.logger.With(fields...)
+
+		switch strings.ToLower(strings.TrimSpace(event.Level)) {
 		case "debug":
 			logger.Debug(event.Message)
 		case "warn", "warning":
@@ -129,11 +132,11 @@ func (p *Pipeline) worker() {
 		case "error":
 			logger.Error(event.Message)
 		case "dpanic":
-			logger.Error("dpanic 级别事件", zap.String("message", event.Message))
+			logger.Error("dpanic 级别事件: " + event.Message)
 		case "panic":
-			logger.Error("panic 级别事件", zap.String("message", event.Message))
+			logger.Error("panic 级别事件: " + event.Message)
 		case "fatal":
-			logger.Error("fatal 级别事件", zap.String("message", event.Message))
+			logger.Error("fatal 级别事件: " + event.Message)
 		default:
 			logger.Info(event.Message)
 		}

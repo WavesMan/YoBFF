@@ -19,6 +19,7 @@ import type {
   SiteListResponse,
   SiteLogStream,
   SiteUpdateRequest,
+  SSLCertificate,
 } from './types'
 
 const API_BASE = '/admin/api/v1'
@@ -88,6 +89,50 @@ export function normalizeConfig(config?: Config | null): Config {
       },
     },
   }
+}
+
+export async function fetchCertificates(
+  token: string,
+  page = 1,
+  pageSize = 15
+) {
+  return apiRequest<{ items: SSLCertificate[], total: number }>(
+    `${API_BASE}/certs?page=${page}&pageSize=${pageSize}`,
+    { method: 'GET' },
+    token
+  )
+}
+
+export async function uploadCertificate(
+  token: string,
+  formData: FormData
+) {
+  const headers = new Headers()
+  headers.set('Authorization', `Bearer ${token}`)
+  
+  const response = await fetch(`${API_BASE}/certs`, {
+    method: 'POST',
+    body: formData,
+    headers
+  })
+  
+  if (!response.ok) {
+    const error = await response.text()
+    throw new Error(error || `上传失败(${response.status})`)
+  }
+  
+  return await response.json()
+}
+
+export async function deleteCertificate(
+  token: string,
+  id: string
+) {
+  return apiRequest(
+    `${API_BASE}/certs/${id}`,
+    { method: 'DELETE' },
+    token
+  )
 }
 
 export async function fetchHealthz() {
