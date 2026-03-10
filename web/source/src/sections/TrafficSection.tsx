@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { SiteList } from './traffic/SiteList'
-import { SiteConfigDrawer } from './traffic/SiteConfigDrawer'
+import { SiteConfigDrawer } from './traffic/site-config/SiteConfigDrawer'
 
 type TrafficSectionProps = {
   token: string
