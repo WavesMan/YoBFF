@@ -14,7 +14,10 @@ import (
 	"time"
 )
 
-// generateSelfSignedCert 生成自签名证书 PEM 和私钥 PEM
+// generateSelfSignedCert 生成测试用自签名证书与私钥 PEM 文本。
+// 参数：t 为测试上下文，domains 为证书绑定域名集合。
+// 返回：证书 PEM 与私钥 PEM。
+// 异常：证书生成失败时终止当前测试。
 func generateSelfSignedCert(t *testing.T, domains []string) (string, string) {
 	priv, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
@@ -46,6 +49,7 @@ func generateSelfSignedCert(t *testing.T, domains []string) (string, string) {
 	return string(certPEM), string(keyPEM)
 }
 
+// TestManager_LoadSSLCertificates 验证 SSL 证书加载、匹配与默认证书回退行为。
 func TestManager_LoadSSLCertificates(t *testing.T) {
 	// 1. 准备测试环境
 	configDir := t.TempDir()

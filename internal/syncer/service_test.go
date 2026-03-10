@@ -13,6 +13,7 @@ import (
 	"YoBFF/internal/logging"
 )
 
+// TestService_trySync 验证同步任务可抓取并写入 Cloudflare 状态。
 func TestService_trySync(t *testing.T) {
 	// 1. Mock Cloudflare Server
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -78,6 +79,7 @@ func TestService_trySync(t *testing.T) {
 	}
 }
 
+// TestService_shouldSync 验证调度周期判断在不同时间点的行为。
 func TestService_shouldSync(t *testing.T) {
 	// 1. Setup minimal Manager
 	f, err := os.CreateTemp("", "syncer_shouldSync_*.json")

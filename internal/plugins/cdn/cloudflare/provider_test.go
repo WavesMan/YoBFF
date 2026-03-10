@@ -8,6 +8,7 @@ import (
 	"testing"
 )
 
+// TestProvider_FetchCIDRs 验证成功抓取 IPv4 与 IPv6 段并合并返回。
 func TestProvider_FetchCIDRs(t *testing.T) {
 	// 1. 创建 Mock Server
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -54,6 +55,7 @@ func TestProvider_FetchCIDRs(t *testing.T) {
 	}
 }
 
+// TestProvider_FetchCIDRs_Error 验证远端异常状态码会触发错误返回。
 func TestProvider_FetchCIDRs_Error(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)

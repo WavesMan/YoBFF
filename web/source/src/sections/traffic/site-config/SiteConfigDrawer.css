@@ -20,12 +20,13 @@
   right: -100%;
   width: 85%;
   height: 100vh;
-  background: var(--bg-card);
+  background: #111; /* 使用深色背景代替透明度可能存在的变量 */
   z-index: 1000;
   transition: right 0.3s ease;
   display: flex;
   flex-direction: column;
   box-shadow: -5px 0 15px rgba(0,0,0,0.5);
+  opacity: 1; /* 强制不透明 */
 }
 .drawer.open {
   right: 0;
@@ -41,6 +42,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+  background: #111; /* 确保标题栏也不透明 */
 }
 .header-left {
   display: flex;
@@ -71,11 +73,12 @@
   flex: 1;
   display: flex;
   overflow: hidden;
+  background: #111; /* 确保子元素也有背景 */
 }
 .config-sidebar {
   width: 200px;
   border-right: 1px solid var(--border);
-  background: var(--bg-page);
+  background: #111; /* 确保侧边栏不透明 */
   padding: 20px 0;
 }
 .config-menu-item {
@@ -100,7 +103,7 @@
   flex: 1;
   padding: 30px;
   overflow-y: auto;
-  background: var(--bg-card);
+  background: #111; /* 确保内容区不透明 */
 }
 .panel {
   max-width: 900px;

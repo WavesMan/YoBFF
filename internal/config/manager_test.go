@@ -6,6 +6,7 @@ import (
 	"testing"
 )
 
+// TestManagerResolveRoute_ExactAndWildcard 验证精确域名与通配域名路由匹配逻辑。
 func TestManagerResolveRoute_ExactAndWildcard(t *testing.T) {
 	cfgJSON := `{
   "dataPlane": { "httpListenAddr": ":8080", "httpsListenAddr": ":8443", "enableHttps": true },

@@ -125,6 +125,10 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// loginCaptchaRequirement 查询当前客户端是否需要验证码。
+// 参数：w 为响应写入器，r 为请求对象。
+// 返回：是否需要验证码的布尔结果。
+// 异常：请求方法非法时返回 405。
 func (s *Server) loginCaptchaRequirement(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed", r)
@@ -137,6 +141,10 @@ func (s *Server) loginCaptchaRequirement(w http.ResponseWriter, r *http.Request)
 	})
 }
 
+// logout 处理管理员登出请求并返回统一结果。
+// 参数：w 为响应写入器，r 为请求对象。
+// 返回：登出状态响应。
+// 异常：请求方法非法时返回 405。
 func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed", r)

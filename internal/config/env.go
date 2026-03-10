@@ -48,6 +48,10 @@ func EnvDurationSeconds(key string, fallbackSeconds int) time.Duration {
 	return time.Duration(seconds) * time.Second
 }
 
+// envBoolValue 读取布尔环境变量并兼容常见文本值。
+// 参数：key 为变量名，fallback 为兜底值。
+// 返回：解析后的布尔结果。
+// 异常：值非法时回退默认值。
 func envBoolValue(key string, fallback bool) bool {
 	value := strings.TrimSpace(os.Getenv(key))
 	if value == "" {

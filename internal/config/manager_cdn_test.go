@@ -7,6 +7,7 @@ import (
 	"testing"
 )
 
+// TestManager_UpdateProviderStatus 验证 CDN 提供商状态更新与动态白名单生效。
 func TestManager_UpdateProviderStatus(t *testing.T) {
 	// 1. 创建临时配置文件
 	f, err := os.CreateTemp("", "config_*.json")

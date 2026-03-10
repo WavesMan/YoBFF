@@ -7,6 +7,7 @@ import (
 	"YoBFF/internal/config"
 )
 
+// TestStore_SiteLifecycle 验证站点创建、配置更新与按主机名读取完整链路。
 func TestStore_SiteLifecycle(t *testing.T) {
 	// 1. 初始化临时数据库
 	tmpDir := t.TempDir()
@@ -62,6 +63,7 @@ func TestStore_SiteLifecycle(t *testing.T) {
 	}
 }
 
+// TestStore_GetSiteConfigByHostname_NotFound 验证未知主机名返回站点不存在错误。
 func TestStore_GetSiteConfigByHostname_NotFound(t *testing.T) {
 	tmpDir := t.TempDir()
 	s, _ := NewSQLiteStore(filepath.Join(tmpDir, "test.db"))

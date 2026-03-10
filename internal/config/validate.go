@@ -10,6 +10,10 @@ import (
 	"strings"
 )
 
+// ValidateConfig 校验配置结构、路由、证书与 CDN 提供商合法性。
+// 参数：cfg 为待校验配置，configPath 为配置文件路径用于解析相对证书路径。
+// 返回：配置问题列表，空切片表示无错误。
+// 异常：无。
 func ValidateConfig(cfg Config, configPath string) []ValidationIssue {
 	cfg = fillDefaults(cfg)
 	var issues []ValidationIssue

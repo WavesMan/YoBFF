@@ -36,6 +36,10 @@ func (s *Service) Start(ctx context.Context) {
 	go s.run(ctx)
 }
 
+// run 执行后台循环并按计划触发同步任务。
+// 参数：ctx 为生命周期上下文。
+// 返回：无。
+// 异常：无。
 func (s *Service) run(ctx context.Context) {
 	// 初始执行一次
 	s.trySync(ctx)
@@ -59,6 +63,10 @@ func (s *Service) run(ctx context.Context) {
 	}
 }
 
+// shouldSync 根据配置周期判断是否需要触发下一次同步。
+// 参数：lastSync 为最近一次同步时间。
+// 返回：true 表示应立即执行同步。
+// 异常：计划解析失败时按一小时兜底。
 func (s *Service) shouldSync(lastSync time.Time) bool {
 	cfg := s.manager.CurrentConfig()
 	if !cfg.CDNSync.Enabled {
@@ -83,6 +91,10 @@ func (s *Service) shouldSync(lastSync time.Time) bool {
 	return time.Since(lastSync) >= duration
 }
 
+// trySync 并发执行所有配置提供商的同步流程。
+// 参数：ctx 为同步上下文。
+// 返回：无。
+// 异常：无。
 func (s *Service) trySync(ctx context.Context) {
 	cfg := s.manager.CurrentConfig()
 	if !cfg.CDNSync.Enabled {
@@ -100,6 +112,10 @@ func (s *Service) trySync(ctx context.Context) {
 	wg.Wait()
 }
 
+// syncProvider 同步单个 CDN 提供商并写回状态快照。
+// 参数：ctx 为同步上下文，name 为提供商名称，cfg 为当前配置。
+// 返回：无。
+// 异常：提供商不支持或抓取失败时记录错误并回写状态。
 func (s *Service) syncProvider(ctx context.Context, name string, cfg config.Config) {
 	var provider cdn.Provider
 	switch strings.ToLower(name) {

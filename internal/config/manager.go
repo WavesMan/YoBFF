@@ -121,6 +121,10 @@ func (m *Manager) Apply(cfg Config) error {
 	return nil
 }
 
+// Validate 对候选配置执行静态校验并返回问题列表。
+// 参数：cfg 为待校验配置。
+// 返回：校验问题集合，空切片表示通过。
+// 异常：无。
 func (m *Manager) Validate(cfg Config) []ValidationIssue {
 	filled := fillDefaults(cfg)
 	return ValidateConfig(filled, m.path)

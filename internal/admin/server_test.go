@@ -769,6 +769,10 @@ func TestRequestIDFromContext_NonString(t *testing.T) {
 
 type failingReader struct{}
 
+// Read 模拟随机源读取失败，用于覆盖 request_id 降级分支。
+// 参数：_ 为仅读取占位缓冲区。
+// 返回：固定返回 0 与错误。
+// 异常：无。
 func (f failingReader) Read(_ []byte) (int, error) {
 	return 0, errors.New("fail")
 }

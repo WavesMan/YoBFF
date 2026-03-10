@@ -69,6 +69,10 @@ func (p *Provider) FetchCIDRs(ctx context.Context) ([]string, error) {
 	return append(ipv4, ipv6...), nil
 }
 
+// fetch 抓取单个地址列表并解析为 CIDR 切片。
+// 参数：ctx 为请求上下文，url 为目标地址。
+// 返回：解析后的 CIDR 列表。
+// 异常：请求失败、状态码异常或读取失败时返回错误。
 func (p *Provider) fetch(ctx context.Context, url string) ([]string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {

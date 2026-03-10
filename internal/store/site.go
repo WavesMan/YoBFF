@@ -486,6 +486,10 @@ func (s *Store) UpdateSiteLogStream(siteID string, filterQuery string) (SiteLogS
 	}, nil
 }
 
+// normalizeHostname 归一化主机名以确保查询大小写一致。
+// 参数：hostname 为待规范化主机名。
+// 返回：去空白并转小写后的主机名。
+// 异常：无。
 func normalizeHostname(hostname string) string {
 	return strings.ToLower(strings.TrimSpace(hostname))
 }

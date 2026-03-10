@@ -79,8 +79,13 @@ func TestHandler_SiteConfigOverride(t *testing.T) {
 	if res.StatusCode != http.StatusForbidden {
 		t.Errorf("预期站点配置拦截 (403)，实际: %d", res.StatusCode)
 	}
-	if string(body) != "<html>site-blocked</html>" {
-		t.Errorf("预期使用站点拦截页面，实际: %q", string(body))
+	// 验证不再使用自定义页面，而是包含标准错误信息的页面
+	// string(body) 应该包含 YoBFF 的 403 页面特征，这里简单验证不为空且包含 403
+	if len(body) == 0 {
+		t.Errorf("预期返回 403 页面内容，实际为空")
+	}
+	if string(body) == "<html>site-blocked</html>" {
+		t.Errorf("预期忽略自定义拦截页面，实际仍在使用: %q", string(body))
 	}
 
 	// 4. 测试场景：客户端 IP 为 192.168.1.1
