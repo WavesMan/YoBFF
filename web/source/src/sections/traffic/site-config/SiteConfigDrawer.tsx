@@ -12,10 +12,17 @@ import {
   FiZap,
 } from 'react-icons/fi'
 import {
+  createLBPool,
+  deleteLBPool,
+  deleteLBRoute,
+  fetchLBPools,
+  fetchLBRoutes,
   fetchSite,
   fetchSiteConfig,
   fetchSiteVersions,
   rollbackSiteConfig,
+  updateLBPool,
+  upsertLBRoute,
   updateSiteConfig,
   updateSite,
   validateConfig,
@@ -161,8 +168,28 @@ export function SiteConfigDrawer({ token, operator, siteId, onClose }: SiteConfi
     setLoading(true)
     setError('')
     try {
-      const data = await fetchSiteConfig(token, siteId)
-      setConfig(data)
+      const [siteConfigResult, lbPoolsResult, lbRoutesResult] = await Promise.allSettled([
+        fetchSiteConfig(token, siteId),
+        fetchLBPools(token),
+        fetchLBRoutes(token),
+      ])
+      if (siteConfigResult.status !== 'fulfilled') {
+        throw siteConfigResult.reason
+      }
+      const nextConfig = siteConfigResult.value
+      if (lbPoolsResult.status === 'fulfilled' && lbRoutesResult.status === 'fulfilled') {
+        setConfig({
+          ...nextConfig,
+          loadBalancer: {
+            ...nextConfig.loadBalancer,
+            defaultPoolId: lbRoutesResult.value.default_pool_id || nextConfig.loadBalancer?.defaultPoolId || '',
+            pools: lbPoolsResult.value.items || [],
+            routes: lbRoutesResult.value.items || [],
+          },
+        })
+      } else {
+        setConfig(nextConfig)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : '加载配置失败')
     } finally {
@@ -209,27 +236,109 @@ export function SiteConfigDrawer({ token, operator, siteId, onClose }: SiteConfi
     }
   }, [activeTab, siteId, loadVersions, loadLogStream])
 
+  const saveLoadBalancerByAPI = useCallback(async (draft: Config) => {
+    const pools = (draft.loadBalancer?.pools || []).map(pool => ({
+      ...pool,
+      id: (pool.id || '').trim(),
+      name: (pool.name || '').trim(),
+      strategy: pool.strategy || 'weighted_rr',
+      nodes: (pool.nodes || []).map(node => ({
+        ...node,
+        id: (node.id || '').trim(),
+        upstream: (node.upstream || '').trim(),
+        weight: Number(node.weight ?? 0),
+        enabled: node.enabled !== false,
+      })),
+    }))
+    const routes = (draft.loadBalancer?.routes || []).map(route => ({
+      ...route,
+      domain: (route.domain || '').trim(),
+      poolId: (route.poolId || '').trim(),
+      fallbackPoolId: (route.fallbackPoolId || '').trim(),
+      forceHttps: route.forceHttps !== false,
+    }))
+    const poolIDSet = new Set(pools.map(pool => pool.id).filter(Boolean))
+    if (pools.some(pool => !pool.id || !pool.name)) {
+      throw new Error('流量池ID和名称不能为空')
+    }
+    if (pools.some(pool => (pool.nodes || []).some(node => !node.id || !node.upstream || Number(node.weight) <= 0))) {
+      throw new Error('流量池节点配置无效')
+    }
+    if (routes.some(route => !route.domain || !route.poolId || !poolIDSet.has(route.poolId || '') || (route.fallbackPoolId && !poolIDSet.has(route.fallbackPoolId)))) {
+      throw new Error('域名绑定规则配置无效')
+    }
+    const [currentPools, currentRoutes] = await Promise.all([
+      fetchLBPools(token),
+      fetchLBRoutes(token),
+    ])
+    const currentPoolIDs = new Set((currentPools.items || []).map(pool => (pool.id || '').trim()).filter(Boolean))
+    const currentRouteDomains = new Set((currentRoutes.items || []).map(route => (route.domain || '').trim()).filter(Boolean))
+    const desiredPoolIDs = new Set(pools.map(pool => pool.id).filter(Boolean))
+    const desiredRouteDomains = new Set(routes.map(route => route.domain).filter(Boolean))
+    for (const pool of pools) {
+      if (!pool.id) {
+        continue
+      }
+      if (currentPoolIDs.has(pool.id)) {
+        await updateLBPool(token, pool.id, pool)
+      } else {
+        await createLBPool(token, pool)
+      }
+    }
+    for (const route of routes) {
+      if (!route.domain) {
+        continue
+      }
+      await upsertLBRoute(token, route.domain, route)
+    }
+    for (const domain of currentRouteDomains) {
+      if (desiredRouteDomains.has(domain)) {
+        continue
+      }
+      await deleteLBRoute(token, domain)
+    }
+    for (const poolID of currentPoolIDs) {
+      if (desiredPoolIDs.has(poolID)) {
+        continue
+      }
+      await deleteLBPool(token, poolID)
+    }
+    const targetDefaultPoolID = (draft.loadBalancer?.defaultPoolId || '').trim()
+    const currentDefaultPoolID = (currentRoutes.default_pool_id || '').trim()
+    if (targetDefaultPoolID !== currentDefaultPoolID) {
+      const validation = await validateConfig(token, draft, operator)
+      if (!validation.valid) {
+        throw new Error('默认流量池配置验证失败: ' + validation.errors.map(e => e.message).join(', '))
+      }
+      await updateSiteConfig(token, siteId, draft, operator)
+    }
+  }, [token, operator, siteId])
+
   const handleSave = async () => {
     if (!config) return
     setSaving(true)
     setError('')
     setSuccess('')
     try {
-      // Validate first
-      const validation = await validateConfig(token, config, operator)
-      if (!validation.valid) {
-        setError('配置验证失败: ' + validation.errors.map(e => e.message).join(', '))
-        return
+      if (activeTab === 'proxy') {
+        await saveLoadBalancerByAPI(config)
+      } else {
+        const validation = await validateConfig(token, config, operator)
+        if (!validation.valid) {
+          setError('配置验证失败: ' + validation.errors.map(e => e.message).join(', '))
+          return
+        }
+        await updateSiteConfig(token, siteId, config, operator)
       }
-      
-      await updateSiteConfig(token, siteId, config, operator)
       setSuccess('配置已保存并生效')
       setTimeout(() => setSuccess(''), 3000)
+      await loadConfig()
       if (activeTab === 'version') {
         loadVersions()
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : '保存配置失败')
+      const defaultMessage = activeTab === 'proxy' ? '流量池配置保存失败' : '保存配置失败'
+      setError(err instanceof Error ? err.message : defaultMessage)
     } finally {
       setSaving(false)
     }
@@ -286,24 +395,43 @@ export function SiteConfigDrawer({ token, operator, siteId, onClose }: SiteConfi
   }
 
   const handleAddPool = () => {
-    if (!newPool.id || !newPool.name) return
+    const poolID = (newPool.id || '').trim()
+    const poolName = (newPool.name || '').trim()
+    if (!poolID || !poolName) return
     updateConfig(prev => ({
       ...prev,
       loadBalancer: {
         ...prev.loadBalancer,
-        pools: [...(prev.loadBalancer?.pools || []), newPool]
+        pools: [
+          ...(prev.loadBalancer?.pools || []),
+          { ...newPool, id: poolID, name: poolName },
+        ]
       }
     }))
     setNewPool({ id: '', name: '', strategy: 'weighted_rr', nodes: [] })
   }
 
   const handleRemovePool = (index: number) => {
+    const removedPoolID = (config?.loadBalancer?.pools || [])[index]?.id || ''
     updateConfig(prev => ({
       ...prev,
       loadBalancer: {
         ...prev.loadBalancer,
-        pools: (prev.loadBalancer?.pools || []).filter((_, i) => i !== index)
+        pools: (prev.loadBalancer?.pools || []).filter((_, i) => i !== index),
+        defaultPoolId: prev.loadBalancer?.defaultPoolId === removedPoolID
+          ? ''
+          : prev.loadBalancer?.defaultPoolId,
+        routes: (prev.loadBalancer?.routes || []).map(route => ({
+          ...route,
+          poolId: route.poolId === removedPoolID ? '' : route.poolId,
+          fallbackPoolId: route.fallbackPoolId === removedPoolID ? '' : route.fallbackPoolId,
+        })),
       }
+    }))
+    setNewRoute(prev => ({
+      ...prev,
+      poolId: prev.poolId === removedPoolID ? '' : prev.poolId,
+      fallbackPoolId: prev.fallbackPoolId === removedPoolID ? '' : prev.fallbackPoolId,
     }))
   }
 
@@ -373,7 +501,7 @@ export function SiteConfigDrawer({ token, operator, siteId, onClose }: SiteConfi
             className={`config-menu-item ${activeTab === 'proxy' ? 'active' : ''}`}
             onClick={() => setActiveTab('proxy')}
           >
-            <FiGlobe /> 反向代理
+            <FiGlobe /> 流量池管理
           </div>
           <div 
             className={`config-menu-item ${activeTab === 'https' ? 'active' : ''}`}

@@ -10,6 +10,8 @@ import type {
   HealthzResponse,
   LogLevelResponse,
   LogStats,
+  LBPool,
+  LBRouteRule,
   LoginCaptchaRequirementResponse,
   LoginPayload,
   LoginResponse,
@@ -45,7 +47,13 @@ async function apiRequest<T>(
   const data = isJson ? await response.json() : null
   if (!response.ok) {
     const error = (data || {}) as ApiError
-    const message = error.message || `请求失败(${response.status})`
+    const issues = (error.errors || [])
+      .map(issue => `${issue.path}: ${issue.message}`)
+      .join('; ')
+    const detailText = issues ? `，详情：${issues}` : ''
+    const requestIDText = error.request_id ? ` [request_id=${error.request_id}]` : ''
+    const errorCodeText = error.error_code ? ` [error_code=${error.error_code}]` : ''
+    const message = (error.message || `请求失败(${response.status})`) + detailText + errorCodeText + requestIDText
     throw new Error(message)
   }
   return data as T
@@ -291,5 +299,46 @@ export async function updateSiteLogStream(token: string, id: string, filterQuery
   return apiRequest<SiteLogStream>(`${API_BASE}/sites/${id}/log/stream`, {
     method: 'PUT',
     body: JSON.stringify({ site_id: id, filter_query: filterQuery }),
+  }, token)
+}
+
+export async function fetchLBPools(token: string) {
+  return apiRequest<{ items: LBPool[] }>(`${API_BASE}/lb/pools`, { method: 'GET' }, token)
+}
+
+export async function createLBPool(token: string, pool: LBPool) {
+  return apiRequest<{ status: string; id: string }>(`${API_BASE}/lb/pools`, {
+    method: 'POST',
+    body: JSON.stringify(pool),
+  }, token)
+}
+
+export async function updateLBPool(token: string, poolID: string, pool: LBPool) {
+  return apiRequest<{ status: string; pool_id: string }>(`${API_BASE}/lb/pools/${encodeURIComponent(poolID)}`, {
+    method: 'PUT',
+    body: JSON.stringify(pool),
+  }, token)
+}
+
+export async function deleteLBPool(token: string, poolID: string) {
+  return apiRequest<{ status: string; pool_id: string }>(`${API_BASE}/lb/pools/${encodeURIComponent(poolID)}`, {
+    method: 'DELETE',
+  }, token)
+}
+
+export async function fetchLBRoutes(token: string) {
+  return apiRequest<{ items: LBRouteRule[]; default_pool_id?: string }>(`${API_BASE}/lb/routes`, { method: 'GET' }, token)
+}
+
+export async function upsertLBRoute(token: string, domain: string, route: LBRouteRule) {
+  return apiRequest<{ status: string; domain: string }>(`${API_BASE}/lb/routes/${encodeURIComponent(domain)}`, {
+    method: 'PUT',
+    body: JSON.stringify(route),
+  }, token)
+}
+
+export async function deleteLBRoute(token: string, domain: string) {
+  return apiRequest<{ status: string; domain: string }>(`${API_BASE}/lb/routes/${encodeURIComponent(domain)}`, {
+    method: 'DELETE',
   }, token)
 }
