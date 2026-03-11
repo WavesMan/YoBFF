@@ -214,3 +214,208 @@ func (s *snapshot) pickTargetFromPool(poolID string) (*url.URL, bool) {
 	}
 	return compiled.Nodes[index].Target, true
 }
+
+// hasLoadBalancerRuleForDomain 判断给定域名是否已由负载均衡规则接管。
+// 参数：domain 为已标准化域名（支持精确域名或通配域名表达）。
+// 返回：true 表示应优先使用负载均衡规则。
+// 异常：无。
+func (s *snapshot) hasLoadBalancerRuleForDomain(domain string) bool {
+	if domain == "" {
+		return false
+	}
+	if _, ok := s.lbExactRoutes[domain]; ok {
+		return true
+	}
+	if strings.HasPrefix(domain, "*.") {
+		suffix := domain[1:]
+		for _, item := range s.lbWildcardRoutes {
+			if item.Suffix == suffix {
+				return true
+			}
+		}
+		return false
+	}
+	for _, item := range s.lbWildcardRoutes {
+		if strings.HasSuffix(domain, item.Suffix) {
+			return true
+		}
+	}
+	return false
+}
+
+func prepareRoutingAndLoadBalancer(cfg Config) (Config, []ValidationIssue) {
+	result := cfg
+	if hasLoadBalancerBinding(result.LoadBalancer) {
+		return result, checkRoutingLoadBalancerConflict(result.Routing, result.LoadBalancer)
+	}
+	if !hasLegacyRouting(result.Routing) {
+		return result, nil
+	}
+	result.LoadBalancer = migrateRoutingToLoadBalancer(result.Routing, result.LoadBalancer)
+	result.Routing = RoutingConfig{}
+	return result, nil
+}
+
+func hasLoadBalancerBinding(lb LoadBalancerConfig) bool {
+	if strings.TrimSpace(lb.DefaultPoolID) != "" {
+		return true
+	}
+	return len(lb.Pools) > 0 || len(lb.Routes) > 0
+}
+
+func hasLegacyRouting(routing RoutingConfig) bool {
+	if strings.TrimSpace(routing.DefaultUpstream) != "" {
+		return true
+	}
+	return len(routing.Domains) > 0
+}
+
+func checkRoutingLoadBalancerConflict(routing RoutingConfig, lb LoadBalancerConfig) []ValidationIssue {
+	issues := make([]ValidationIssue, 0)
+	if !hasLegacyRouting(routing) || !hasLoadBalancerBinding(lb) {
+		return issues
+	}
+
+	index := &snapshot{
+		lbExactRoutes:    make(map[string]lbRouteItem),
+		lbWildcardRoutes: make([]lbWildcardItem, 0),
+	}
+	for _, item := range lb.Routes {
+		domain := normalizeHost(item.Domain)
+		if domain == "" {
+			continue
+		}
+		routeItemValue := lbRouteItem{
+			Domain:         domain,
+			ForceHTTPS:     item.ForceHTTPS,
+			PoolID:         strings.TrimSpace(item.PoolID),
+			FallbackPoolID: strings.TrimSpace(item.FallbackPoolID),
+		}
+		if strings.HasPrefix(domain, "*.") {
+			index.lbWildcardRoutes = append(index.lbWildcardRoutes, lbWildcardItem{
+				Suffix: domain[1:],
+				Route:  routeItemValue,
+			})
+			continue
+		}
+		index.lbExactRoutes[domain] = routeItemValue
+	}
+
+	for idx, item := range routing.Domains {
+		domain := normalizeHost(item.Domain)
+		if domain == "" {
+			continue
+		}
+		if index.hasLoadBalancerRuleForDomain(domain) {
+			issues = append(issues, ValidationIssue{
+				Path:    fmt.Sprintf("routing.domains[%d].domain", idx),
+				Message: fmt.Sprintf("domain %q conflicts with loadBalancer.routes", item.Domain),
+			})
+		}
+	}
+	if strings.TrimSpace(routing.DefaultUpstream) != "" && strings.TrimSpace(lb.DefaultPoolID) != "" {
+		issues = append(issues, ValidationIssue{
+			Path:    "routing.defaultUpstream",
+			Message: "defaultUpstream conflicts with loadBalancer.defaultPoolId",
+		})
+	}
+	return issues
+}
+
+func migrateRoutingToLoadBalancer(routing RoutingConfig, lb LoadBalancerConfig) LoadBalancerConfig {
+	result := lb
+	result.Pools = append([]LBPool(nil), result.Pools...)
+	result.Routes = append([]LBRouteRule(nil), result.Routes...)
+
+	usedPoolID := make(map[string]struct{}, len(result.Pools))
+	for _, item := range result.Pools {
+		poolID := strings.TrimSpace(item.ID)
+		if poolID != "" {
+			usedPoolID[poolID] = struct{}{}
+		}
+	}
+
+	for _, item := range routing.Domains {
+		domain := normalizeHost(item.Domain)
+		upstream := strings.TrimSpace(item.Upstream)
+		if domain == "" || upstream == "" {
+			continue
+		}
+		poolID := buildMigratedPoolID(domain, usedPoolID)
+		result.Pools = append(result.Pools, LBPool{
+			ID:       poolID,
+			Name:     "迁移池_" + domain,
+			Strategy: lbStrategyWeightedRR,
+			Nodes: []LBNode{
+				{
+					ID:       "node_primary",
+					Upstream: upstream,
+					Weight:   1,
+					Enabled:  true,
+				},
+			},
+		})
+		result.Routes = append(result.Routes, LBRouteRule{
+			Domain:     item.Domain,
+			PoolID:     poolID,
+			ForceHTTPS: item.ForceHTTPS,
+		})
+	}
+
+	defaultUpstream := strings.TrimSpace(routing.DefaultUpstream)
+	if defaultUpstream != "" {
+		poolID := buildMigratedPoolID("default", usedPoolID)
+		result.Pools = append(result.Pools, LBPool{
+			ID:       poolID,
+			Name:     "迁移池_default",
+			Strategy: lbStrategyWeightedRR,
+			Nodes: []LBNode{
+				{
+					ID:       "node_primary",
+					Upstream: defaultUpstream,
+					Weight:   1,
+					Enabled:  true,
+				},
+			},
+		})
+		result.DefaultPoolID = poolID
+	}
+
+	return result
+}
+
+func buildMigratedPoolID(source string, used map[string]struct{}) string {
+	candidate := "pool_mig_" + sanitizePoolToken(source)
+	if candidate == "pool_mig_" {
+		candidate = "pool_mig_item"
+	}
+	poolID := candidate
+	index := 1
+	for {
+		if _, ok := used[poolID]; !ok {
+			used[poolID] = struct{}{}
+			return poolID
+		}
+		index++
+		poolID = fmt.Sprintf("%s_%d", candidate, index)
+	}
+}
+
+func sanitizePoolToken(source string) string {
+	var builder strings.Builder
+	previousUnderline := false
+	for _, charValue := range strings.ToLower(strings.TrimSpace(source)) {
+		isLetter := charValue >= 'a' && charValue <= 'z'
+		isNumber := charValue >= '0' && charValue <= '9'
+		if isLetter || isNumber {
+			builder.WriteRune(charValue)
+			previousUnderline = false
+			continue
+		}
+		if !previousUnderline {
+			builder.WriteByte('_')
+			previousUnderline = true
+		}
+	}
+	return strings.Trim(builder.String(), "_")
+}

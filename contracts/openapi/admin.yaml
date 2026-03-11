@@ -443,7 +443,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
-          $ref: "#/components/responses/BadRequest"
+          $ref: "#/components/responses/LBPoolNotFound"
         "503":
           $ref: "#/components/responses/AuthUnavailable"
     put:
@@ -472,7 +472,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
-          $ref: "#/components/responses/BadRequest"
+          $ref: "#/components/responses/LBPoolNotFound"
         "503":
           $ref: "#/components/responses/AuthUnavailable"
     delete:
@@ -493,7 +493,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
-          $ref: "#/components/responses/BadRequest"
+          $ref: "#/components/responses/LBPoolNotFound"
         "503":
           $ref: "#/components/responses/AuthUnavailable"
   /api/v1/lb/routes:
@@ -529,7 +529,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
-          $ref: "#/components/responses/BadRequest"
+          $ref: "#/components/responses/LBRouteNotFound"
         "503":
           $ref: "#/components/responses/AuthUnavailable"
     put:
@@ -577,7 +577,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
-          $ref: "#/components/responses/BadRequest"
+          $ref: "#/components/responses/LBRouteNotFound"
         "503":
           $ref: "#/components/responses/AuthUnavailable"
   /api/v1/site-groups:
@@ -1377,6 +1377,26 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/ValidationErrorResponse"
+    LBPoolNotFound:
+      description: 流量池不存在
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error_code: pool_not_found
+            message: pool not found
+            request_id: req-123456
+    LBRouteNotFound:
+      description: 域名绑定规则不存在
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error_code: route_not_found
+            message: route not found
+            request_id: req-123456
   schemas:
     ErrorResponse:
       type: object
@@ -1768,6 +1788,9 @@ components:
             $ref: "#/components/schemas/DomainRule"
     LoadBalancerConfig:
       type: object
+      required:
+        - pools
+        - routes
       properties:
         defaultPoolId:
           type: string
@@ -1781,6 +1804,8 @@ components:
             $ref: "#/components/schemas/LBRouteRule"
     LBPoolListResponse:
       type: object
+      required:
+        - items
       properties:
         items:
           type: array
@@ -1788,6 +1813,8 @@ components:
             $ref: "#/components/schemas/LBPool"
     LBRouteListResponse:
       type: object
+      required:
+        - items
       properties:
         items:
           type: array
@@ -1797,11 +1824,18 @@ components:
           type: string
     LBPool:
       type: object
+      required:
+        - id
+        - name
+        - strategy
+        - nodes
       properties:
         id:
           type: string
+          example: pool_main
         name:
           type: string
+          example: 主池
         strategy:
           type: string
           example: weighted_rr
@@ -1811,27 +1845,44 @@ components:
             $ref: "#/components/schemas/LBNode"
     LBNode:
       type: object
+      required:
+        - id
+        - upstream
+        - weight
+        - enabled
       properties:
         id:
           type: string
+          example: node_a
         upstream:
           type: string
+          example: http://127.0.0.1:8080
         weight:
           type: integer
           format: int32
+          example: 10
         enabled:
           type: boolean
+          example: true
     LBRouteRule:
       type: object
+      required:
+        - domain
+        - poolId
+        - forceHttps
       properties:
         domain:
           type: string
+          example: api.example.com
         poolId:
           type: string
+          example: pool_main
         fallbackPoolId:
           type: string
+          example: pool_backup
         forceHttps:
           type: boolean
+          example: true
     DomainRule:
       type: object
       properties:

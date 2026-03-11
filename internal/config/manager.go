@@ -117,7 +117,11 @@ func (m *Manager) Apply(cfg Config) error {
 	m.mu.Unlock()
 
 	filled := fillDefaults(cfg)
-	next, err := buildSnapshot(filled, m.path, dynamic, statuses)
+	prepared, issues := prepareRoutingAndLoadBalancer(filled)
+	if len(issues) > 0 {
+		return fmt.Errorf("配置冲突: %v", issues)
+	}
+	next, err := buildSnapshot(prepared, m.path, dynamic, statuses)
 	if err != nil {
 		return err
 	}
@@ -131,7 +135,12 @@ func (m *Manager) Apply(cfg Config) error {
 // 异常：无。
 func (m *Manager) Validate(cfg Config) []ValidationIssue {
 	filled := fillDefaults(cfg)
-	return ValidateConfig(filled, m.path)
+	prepared, issues := prepareRoutingAndLoadBalancer(filled)
+	validated := ValidateConfig(prepared, m.path)
+	if len(issues) == 0 {
+		return validated
+	}
+	return append(issues, validated...)
 }
 
 // UpdateProviderStatus 更新特定 CDN 提供商的 IP 列表并重构快照。
@@ -414,6 +423,9 @@ func buildSnapshot(cfg Config, configPath string, dynamicCIDRs []string, cdnStat
 			return nil, fmt.Errorf("域名 %q 对应 Upstream 非法: %s", rule.Domain, rule.Upstream)
 		}
 		domain := normalizeHost(rule.Domain)
+		if data.hasLoadBalancerRuleForDomain(domain) {
+			continue
+		}
 		item := routeItem{
 			Domain:     domain,
 			ForceHTTPS: rule.ForceHTTPS,
@@ -430,7 +442,7 @@ func buildSnapshot(cfg Config, configPath string, dynamicCIDRs []string, cdnStat
 		data.exactRoutes[domain] = item
 	}
 
-	if cfg.Routing.DefaultUpstream != "" {
+	if cfg.Routing.DefaultUpstream != "" && data.lbDefaultRoute == nil {
 		upstreamURL, err := url.Parse(cfg.Routing.DefaultUpstream)
 		if err != nil || upstreamURL.Host == "" || upstreamURL.Scheme == "" {
 			return nil, fmt.Errorf("默认 Upstream 非法: %s", cfg.Routing.DefaultUpstream)
