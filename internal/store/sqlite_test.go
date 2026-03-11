@@ -3,6 +3,7 @@ package store
 import (
 	"database/sql"
 	"errors"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -321,5 +322,65 @@ func TestStore_GuardErrors(t *testing.T) {
 	}
 	if _, err := nilStore.UpdateSiteLogStream("id", "q"); err == nil {
 		t.Fatalf("UpdateSiteLogStream 应返回错误")
+	}
+}
+
+func TestStore_NonNilGuardsAndClosedDBPaths(t *testing.T) {
+	if _, err := NewSQLiteStore(""); err == nil {
+		t.Fatalf("空路径应返回错误")
+	}
+
+	var nilStore *Store
+	if err := nilStore.Close(); err != nil {
+		t.Fatalf("nil store Close 不应报错: %v", err)
+	}
+
+	s := buildTestStore(t)
+	if _, err := s.UpdateSite("", Site{Name: "x"}); err == nil {
+		t.Fatalf("空 siteID 的 UpdateSite 应返回错误")
+	}
+	if _, err := s.DeleteSite(""); err == nil {
+		t.Fatalf("空 siteID 的 DeleteSite 应返回错误")
+	}
+	if _, err := s.UpdateSiteConfig("", config.Config{}, "tester", "update"); err == nil {
+		t.Fatalf("空 siteID 的 UpdateSiteConfig 应返回错误")
+	}
+	if _, err := s.UpdateSiteConfig("missing", config.Config{}, "tester", "update"); !errors.Is(err, ErrSiteNotFound) {
+		t.Fatalf("缺失站点错误不匹配: %v", err)
+	}
+	if _, err := s.ListSiteVersions("", 1); err == nil {
+		t.Fatalf("空 siteID 的 ListSiteVersions 应返回错误")
+	}
+
+	if err := (&Store{}).init(); err == nil {
+		t.Fatalf("未初始化 store 的 init 应返回错误")
+	}
+	var nilStoreForInit *Store
+	if err := nilStoreForInit.init(); err == nil {
+		t.Fatalf("nil store 的 init 应返回错误")
+	}
+	if err := (&Store{}).Close(); err != nil {
+		t.Fatalf("db 为空的 Close 不应报错: %v", err)
+	}
+
+	if err := s.Close(); err != nil {
+		t.Fatalf("关闭 store 失败: %v", err)
+	}
+	if _, err := s.ListVersions(1); err == nil {
+		t.Fatalf("关闭数据库后 ListVersions 应返回错误")
+	}
+	if _, err := s.GetSite("any"); err == nil {
+		t.Fatalf("关闭数据库后 GetSite 应返回错误")
+	}
+}
+
+func TestStore_NewSQLiteStore_MkdirAllFailure(t *testing.T) {
+	blockPath := filepath.Join(t.TempDir(), "blocker")
+	if err := os.WriteFile(blockPath, []byte("x"), 0o600); err != nil {
+		t.Fatalf("写入阻塞文件失败: %v", err)
+	}
+	dbPath := filepath.Join(blockPath, "db.sqlite")
+	if _, err := NewSQLiteStore(dbPath); err == nil {
+		t.Fatalf("目录创建失败应返回错误")
 	}
 }

@@ -207,3 +207,141 @@ func TestSiteRoutes_LogAndErrorPaths(t *testing.T) {
 		t.Fatalf("未知路由状态码不匹配: got=%d", unknownRouteRec.Result().StatusCode)
 	}
 }
+
+func TestSiteRoutes_MethodAndPayloadErrors(t *testing.T) {
+	handler, siteStore := buildSiteHandler(t)
+	site, err := siteStore.CreateSite(store.Site{
+		Name:     "bad",
+		Hostname: "bad.example.com",
+		IP:       "10.0.0.9",
+	})
+	if err != nil {
+		t.Fatalf("创建站点失败: %v", err)
+	}
+
+	cases := []struct {
+		name   string
+		method string
+		path   string
+		body   []byte
+		code   int
+	}{
+		{
+			name:   "site groups method not allowed",
+			method: http.MethodPost,
+			path:   "/api/v1/site-groups?by=hostname",
+			code:   http.StatusMethodNotAllowed,
+		},
+		{
+			name:   "sites method not allowed",
+			method: http.MethodPatch,
+			path:   "/api/v1/sites",
+			code:   http.StatusMethodNotAllowed,
+		},
+		{
+			name:   "site detail method not allowed",
+			method: http.MethodPost,
+			path:   "/api/v1/sites/" + site.ID,
+			code:   http.StatusMethodNotAllowed,
+		},
+		{
+			name:   "site config method not allowed",
+			method: http.MethodDelete,
+			path:   "/api/v1/sites/" + site.ID + "/config",
+			code:   http.StatusMethodNotAllowed,
+		},
+		{
+			name:   "validate method not allowed",
+			method: http.MethodGet,
+			path:   "/api/v1/sites/" + site.ID + "/config/validate",
+			code:   http.StatusMethodNotAllowed,
+		},
+		{
+			name:   "diff method not allowed",
+			method: http.MethodGet,
+			path:   "/api/v1/sites/" + site.ID + "/config/diff",
+			code:   http.StatusMethodNotAllowed,
+		},
+		{
+			name:   "versions method not allowed",
+			method: http.MethodPut,
+			path:   "/api/v1/sites/" + site.ID + "/config/versions",
+			code:   http.StatusMethodNotAllowed,
+		},
+		{
+			name:   "version detail method not allowed",
+			method: http.MethodDelete,
+			path:   "/api/v1/sites/" + site.ID + "/config/versions/any",
+			code:   http.StatusMethodNotAllowed,
+		},
+		{
+			name:   "rollback method not allowed",
+			method: http.MethodGet,
+			path:   "/api/v1/sites/" + site.ID + "/config/rollback",
+			code:   http.StatusMethodNotAllowed,
+		},
+		{
+			name:   "log stream method not allowed",
+			method: http.MethodPost,
+			path:   "/api/v1/sites/" + site.ID + "/log/stream",
+			code:   http.StatusMethodNotAllowed,
+		},
+		{
+			name:   "site create invalid request",
+			method: http.MethodPost,
+			path:   "/api/v1/sites",
+			body:   []byte(`{"unknown":1}`),
+			code:   http.StatusBadRequest,
+		},
+		{
+			name:   "site update invalid request",
+			method: http.MethodPut,
+			path:   "/api/v1/sites/" + site.ID,
+			body:   []byte(`{"unknown":1}`),
+			code:   http.StatusBadRequest,
+		},
+		{
+			name:   "config invalid request",
+			method: http.MethodPut,
+			path:   "/api/v1/sites/" + site.ID + "/config",
+			body:   []byte(`{"unknown":1}`),
+			code:   http.StatusBadRequest,
+		},
+		{
+			name:   "validate invalid request",
+			method: http.MethodPost,
+			path:   "/api/v1/sites/" + site.ID + "/config/validate",
+			body:   []byte(`{"unknown":1}`),
+			code:   http.StatusBadRequest,
+		},
+		{
+			name:   "diff invalid request",
+			method: http.MethodPost,
+			path:   "/api/v1/sites/" + site.ID + "/config/diff",
+			body:   []byte(`{"unknown":1}`),
+			code:   http.StatusBadRequest,
+		},
+		{
+			name:   "rollback missing version id",
+			method: http.MethodPost,
+			path:   "/api/v1/sites/" + site.ID + "/config/rollback",
+			body:   []byte(`{}`),
+			code:   http.StatusBadRequest,
+		},
+		{
+			name:   "log stream empty filter",
+			method: http.MethodPut,
+			path:   "/api/v1/sites/" + site.ID + "/log/stream",
+			body:   []byte(`{"filter_query":" "}`),
+			code:   http.StatusInternalServerError,
+		},
+	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := requestWithToken(t, handler, tt.method, tt.path, tt.body)
+			if rec.Result().StatusCode != tt.code {
+				t.Fatalf("状态码不匹配: got=%d want=%d body=%s", rec.Result().StatusCode, tt.code, rec.Body.String())
+			}
+		})
+	}
+}

@@ -5,6 +5,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/json"
@@ -13,8 +14,10 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -27,6 +30,15 @@ import (
 type fakeServerStarter struct {
 	httpErr error
 	tlsErr  error
+}
+
+type closeErrorListener struct {
+	net.Listener
+}
+
+func (l *closeErrorListener) Close() error {
+	_ = l.Listener.Close()
+	return errors.New("listener close failed")
 }
 
 // ListenAndServe 用于替代真实 HTTP 监听启动逻辑。
@@ -281,6 +293,250 @@ func TestRun_ConfigCertificates(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("run 失败: %v", err)
 	}
+}
+
+func TestDefaultServerStarter_ListenAndServe(t *testing.T) {
+	srv := &http.Server{
+		Addr: "127.0.0.1:0",
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		}),
+	}
+	done := make(chan error, 1)
+	go func() {
+		done <- defaultServerStarter{}.ListenAndServe(srv)
+	}()
+	time.Sleep(120 * time.Millisecond)
+	if err := srv.Close(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		t.Fatalf("关闭服务失败: %v", err)
+	}
+	select {
+	case err := <-done:
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			t.Fatalf("ListenAndServe 返回错误: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatalf("ListenAndServe 未退出")
+	}
+}
+
+func TestDefaultServerStarter_ListenAndServeTLS(t *testing.T) {
+	certPEM, keyPEM := buildSelfSignedPEM(t, "localhost")
+	pair, err := tls.X509KeyPair(certPEM, keyPEM)
+	if err != nil {
+		t.Fatalf("解析证书失败: %v", err)
+	}
+	srv := &http.Server{
+		Addr: "127.0.0.1:0",
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		}),
+		TLSConfig: &tls.Config{
+			Certificates: []tls.Certificate{pair},
+		},
+	}
+	done := make(chan error, 1)
+	go func() {
+		done <- defaultServerStarter{}.ListenAndServeTLS(srv)
+	}()
+	time.Sleep(120 * time.Millisecond)
+	if err = srv.Close(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		t.Fatalf("关闭服务失败: %v", err)
+	}
+	select {
+	case err = <-done:
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			t.Fatalf("ListenAndServeTLS 返回错误: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatalf("ListenAndServeTLS 未退出")
+	}
+}
+
+func TestBuildUIHandler_UseEnvDirectory(t *testing.T) {
+	uiDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(uiDir, "index.html"), []byte("<html>ok</html>"), 0o600); err != nil {
+		t.Fatalf("写入 index 失败: %v", err)
+	}
+	t.Setenv("ADMIN_UI_DIR", uiDir)
+	handler, err := buildUIHandler()
+	if err != nil {
+		t.Fatalf("buildUIHandler 失败: %v", err)
+	}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "http://example.com/", nil)
+	handler.ServeHTTP(rec, req)
+	if rec.Result().StatusCode != http.StatusOK {
+		t.Fatalf("状态码不匹配: got=%d", rec.Result().StatusCode)
+	}
+}
+
+func TestBuildUIHandler_UseEmbeddedFS(t *testing.T) {
+	t.Setenv("ADMIN_UI_DIR", "")
+	handler, err := buildUIHandler()
+	if err != nil {
+		t.Fatalf("buildUIHandler 失败: %v", err)
+	}
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "http://example.com/", nil)
+	handler.ServeHTTP(rec, req)
+	if rec.Result().StatusCode != http.StatusOK {
+		t.Fatalf("状态码不匹配: got=%d", rec.Result().StatusCode)
+	}
+}
+
+func TestShutdownServer_ErrorBranch(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("监听失败: %v", err)
+	}
+	defer listener.Close()
+	srv := &http.Server{
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		}),
+	}
+	done := make(chan error, 1)
+	go func() {
+		done <- srv.Serve(listener)
+	}()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	shutdownServer(ctx, zap.NewNop(), "http", srv)
+	_ = srv.Close()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatalf("服务未退出")
+	}
+}
+
+func TestShutdownServer_DeadlineExceeded(t *testing.T) {
+	startedCh := make(chan struct{}, 1)
+	releaseCh := make(chan struct{})
+	srv := &http.Server{
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			select {
+			case startedCh <- struct{}{}:
+			default:
+			}
+			<-releaseCh
+			w.WriteHeader(http.StatusOK)
+		}),
+	}
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("监听失败: %v", err)
+	}
+	defer listener.Close()
+
+	serveDone := make(chan error, 1)
+	go func() {
+		serveDone <- srv.Serve(listener)
+	}()
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		_, _ = http.Get("http://" + listener.Addr().String() + "/slow")
+	}()
+
+	select {
+	case <-startedCh:
+	case <-time.After(time.Second):
+		t.Fatalf("请求未进入处理器")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	shutdownServer(ctx, zap.NewNop(), "http", srv)
+
+	close(releaseCh)
+	wg.Wait()
+	_ = srv.Close()
+	select {
+	case serveErr := <-serveDone:
+		if serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
+			t.Fatalf("Serve 返回错误: %v", serveErr)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatalf("服务未退出")
+	}
+}
+
+func TestShutdownServer_ListenerCloseError(t *testing.T) {
+	baseListener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("监听失败: %v", err)
+	}
+	listener := &closeErrorListener{Listener: baseListener}
+	srv := &http.Server{
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		}),
+	}
+	done := make(chan error, 1)
+	go func() {
+		done <- srv.Serve(listener)
+	}()
+	ready := false
+	client := &http.Client{Timeout: 80 * time.Millisecond}
+	for i := 0; i < 20; i++ {
+		resp, reqErr := client.Get("http://" + baseListener.Addr().String() + "/healthz")
+		if reqErr == nil {
+			_ = resp.Body.Close()
+			ready = true
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if !ready {
+		t.Fatalf("服务未就绪")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	shutdownServer(ctx, zap.NewNop(), "http", srv)
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatalf("服务未退出")
+	}
+}
+
+func TestRun_NilLoggerAndNilStarter(t *testing.T) {
+	cfg := config.Config{
+		DataPlane: config.DataPlaneConfig{
+			HTTPListenAddr:  "127.0.0.1:0",
+			HTTPSListenAddr: "",
+			EnableHTTPS:     false,
+		},
+		ControlPlane: config.ControlPlaneConfig{
+			AdminListenAddr: "127.0.0.1:9000",
+		},
+	}
+	configPath := writeConfigFile(t, cfg)
+	runtime, err := logging.NewRuntimeFromEnv()
+	if err != nil {
+		t.Fatalf("初始化 Runtime 失败: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err = run(ctx, nil, runtime, configPath, nil); err != nil {
+		t.Fatalf("run 失败: %v", err)
+	}
+}
+
+func TestMain_PanicOnInvalidLogLevel(t *testing.T) {
+	t.Setenv("LOG_LEVEL", "invalid-level")
+	defer func() {
+		if recover() == nil {
+			t.Fatalf("main 应触发 panic")
+		}
+	}()
+	main()
 }
 
 // writeConfigFile 写入测试配置文件并返回路径。

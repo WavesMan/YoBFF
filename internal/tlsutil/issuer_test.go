@@ -121,6 +121,37 @@ func TestIssueFromCA_MissingFiles(t *testing.T) {
 	}
 }
 
+func TestIssueFromCA_ErrorBranches(t *testing.T) {
+	baseDir := t.TempDir()
+	certPath := filepath.Join(baseDir, "ca.crt")
+	keyPath := filepath.Join(baseDir, "ca.key")
+
+	if err := os.WriteFile(certPath, []byte("bad cert"), 0o600); err != nil {
+		t.Fatalf("写入证书失败: %v", err)
+	}
+	if err := os.WriteFile(keyPath, []byte("bad key"), 0o600); err != nil {
+		t.Fatalf("写入私钥失败: %v", err)
+	}
+	if _, err := issueFromCA([]string{"example.local"}, certPath, keyPath); err == nil {
+		t.Fatalf("非法 CA 证书应返回错误")
+	}
+
+	caCertPEM, _ := buildCAForTest(t)
+	if err := os.WriteFile(certPath, caCertPEM, 0o600); err != nil {
+		t.Fatalf("写入证书失败: %v", err)
+	}
+	if _, err := issueFromCA([]string{"example.local"}, certPath, keyPath); err == nil {
+		t.Fatalf("非法 CA 私钥应返回错误")
+	}
+
+	if err := os.Remove(keyPath); err != nil {
+		t.Fatalf("删除私钥失败: %v", err)
+	}
+	if _, err := issueFromCA([]string{"example.local"}, certPath, keyPath); err == nil {
+		t.Fatalf("缺失 CA 私钥应返回错误")
+	}
+}
+
 // TestParsePrivateKeyPEM_CoversFormats 验证 PKCS8/EC/PKCS1 等私钥格式解析路径。
 func TestParsePrivateKeyPEM_CoversFormats(t *testing.T) {
 	rsaKey, err := rsa.GenerateKey(rand.Reader, 2048)

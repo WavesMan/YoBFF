@@ -234,3 +234,50 @@ func TestService_shouldSyncTable(t *testing.T) {
 		})
 	}
 }
+
+func TestService_SyncProviderErrorAndUnknown(t *testing.T) {
+	f, err := os.CreateTemp("", "syncer_provider_*.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.Remove(f.Name())
+	content := `{
+		"dataPlane": {"httpListenAddr": ":8080"},
+		"routing": {"defaultUpstream": "http://localhost:8081"},
+		"cdnSync": {
+			"enabled": true,
+			"providers": ["cloudflare", "unknown-provider"],
+			"schedule": "1h",
+			"cloudflare": {
+				"ipv4_url": "http://127.0.0.1:1/ipv4",
+				"ipv6_url": "http://127.0.0.1:1/ipv6"
+			}
+		}
+	}`
+	_, _ = f.WriteString(content)
+	_ = f.Close()
+
+	manager, err := config.NewManager(f.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtime, err := logging.NewRuntimeFromEnv()
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := NewService(manager, runtime.Logger())
+	cfg := manager.CurrentConfig()
+
+	service.syncProvider(context.Background(), "unknown-provider", cfg)
+	service.syncProvider(context.Background(), "cloudflare", cfg)
+
+	status := manager.GetCDNStatus()
+	if _, ok := status["unknown-provider"]; ok {
+		t.Fatalf("未知提供商不应写入状态")
+	}
+	if s, ok := status["cloudflare"]; !ok {
+		t.Fatalf("cloudflare 状态缺失")
+	} else if s.Error == "" {
+		t.Fatalf("cloudflare 失败时应写入错误状态")
+	}
+}
