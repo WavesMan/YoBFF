@@ -46,6 +46,31 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	clientIP := parseClientIP(r.RemoteAddr)
 	host := normalizeHost(r.Host)
+	siteID := ""
+	if h.store != nil {
+		if resolvedSiteID, err := h.store.GetSiteIDByHostname(host); err == nil {
+			siteID = resolvedSiteID
+		}
+	}
+	emitLog := func(event logging.Event) {
+		if h.logs != nil {
+			h.logs.Emit(event)
+		}
+		if h.store != nil && siteID != "" {
+			_ = h.store.SaveSiteTrafficLog(siteID, store.SiteTrafficLogWrite{
+				Level:      event.Level,
+				EventType:  event.Type,
+				Message:    event.Message,
+				RequestID:  event.RequestID,
+				ClientIP:   event.ClientIP,
+				Host:       event.Host,
+				Method:     event.Method,
+				Path:       event.Path,
+				StatusCode: event.Status,
+				LatencyMS:  event.LatencyMS,
+			})
+		}
+	}
 	// cfg := h.manager.CurrentConfig() // 已移除未使用的配置加载
 
 	// 1. 尝试加载站点级配置
@@ -125,7 +150,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			msg = denialReason
 		}
 
-		h.logs.Emit(logging.Event{
+		emitLog(logging.Event{
 			Level:     "warn",
 			Type:      "blocked",
 			RequestID: reqID,
@@ -143,7 +168,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	route, ok := h.manager.ResolveRoute(host)
 	if !ok {
 		http.Error(w, "upstream route not found", http.StatusBadGateway)
-		h.logs.Emit(logging.Event{
+		emitLog(logging.Event{
 			Level:     "error",
 			Type:      "proxy",
 			RequestID: reqID,
@@ -161,7 +186,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if route.ForceHTTPS && r.TLS == nil {
 		targetURL := "https://" + host + r.URL.RequestURI()
 		http.Redirect(w, r, targetURL, http.StatusMovedPermanently)
-		h.logs.Emit(logging.Event{
+		emitLog(logging.Event{
 			Level:     "info",
 			Type:      "proxy",
 			RequestID: reqID,
@@ -196,7 +221,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	proxy.ServeHTTP(recorder, r)
-	h.logs.Emit(logging.Event{
+	emitLog(logging.Event{
 		Level:     "info",
 		Type:      "proxy",
 		RequestID: reqID,

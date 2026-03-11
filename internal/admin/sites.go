@@ -200,6 +200,10 @@ func (s *Server) routeSiteConfig(w http.ResponseWriter, r *http.Request, siteID 
 			return
 		}
 		if len(parts) == 2 {
+			if r.Method == http.MethodDelete {
+				s.siteConfigVersionDelete(w, r, siteID, parts[1])
+				return
+			}
 			s.siteConfigVersionDetail(w, r, siteID, parts[1])
 			return
 		}
@@ -218,6 +222,10 @@ func (s *Server) routeSiteConfig(w http.ResponseWriter, r *http.Request, siteID 
 func (s *Server) routeSiteLog(w http.ResponseWriter, r *http.Request, siteID string, parts []string) {
 	if len(parts) == 1 && parts[0] == "stream" {
 		s.siteLogStream(w, r, siteID)
+		return
+	}
+	if len(parts) == 1 && parts[0] == "history" {
+		s.siteLogHistory(w, r, siteID)
 		return
 	}
 	writeError(w, http.StatusNotFound, "not_found", "not found", r)
@@ -435,6 +443,32 @@ func (s *Server) siteConfigVersionDetail(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	writeJSON(w, http.StatusOK, cfg)
+}
+
+func (s *Server) siteConfigVersionDelete(w http.ResponseWriter, r *http.Request, siteID string, versionID string) {
+	if s.store == nil {
+		writeError(w, http.StatusServiceUnavailable, "store_unavailable", "site store unavailable", r)
+		return
+	}
+	if r.Method != http.MethodDelete {
+		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed", r)
+		return
+	}
+	if versionID == "" {
+		writeError(w, http.StatusBadRequest, "invalid_request", "version_id is required", r)
+		return
+	}
+	if err := s.store.DeleteSiteVersion(siteID, versionID); err != nil {
+		writeSiteError(w, err, r)
+		return
+	}
+	_ = s.store.SaveAudit("site_config_version_delete", siteID, operatorFromRequest(r), map[string]any{
+		"version_id": versionID,
+	})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"status":     "deleted",
+		"version_id": versionID,
+	})
 }
 
 // siteConfigRollback 执行站点配置回滚，用于快速恢复站点配置。

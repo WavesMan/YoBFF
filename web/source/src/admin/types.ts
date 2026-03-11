@@ -223,6 +223,31 @@ export type SiteLogStream = {
   updated_at?: string
 }
 
+export type SiteLogKind = 'all' | 'traffic' | 'system'
+
+export type SiteLogEntry = {
+  id: string
+  site_id: string
+  kind: SiteLogKind
+  level: string
+  message: string
+  request_id?: string
+  client_ip?: string
+  host?: string
+  method?: string
+  path?: string
+  status_code?: number
+  latency_ms?: number
+  operator?: string
+  action?: string
+  detail?: string
+  created_at: string
+}
+
+export type SiteLogHistoryResponse = {
+  items: SiteLogEntry[]
+}
+
 export type ConfigValidationResponse = {
   valid: boolean
   errors: ValidationIssue[]

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -98,6 +99,31 @@ func (s *Store) init() error {
 			filter_query TEXT NOT NULL,
 			updated_at TEXT NOT NULL
 		);
+		CREATE TABLE IF NOT EXISTS site_traffic_logs (
+			id TEXT PRIMARY KEY,
+			site_id TEXT NOT NULL,
+			level TEXT NOT NULL,
+			event_type TEXT NOT NULL,
+			message TEXT NOT NULL,
+			request_id TEXT,
+			client_ip TEXT,
+			host TEXT,
+			method TEXT,
+			path TEXT,
+			status_code INTEGER,
+			latency_ms INTEGER,
+			created_at TEXT NOT NULL
+		);
+		CREATE TABLE IF NOT EXISTS site_system_logs (
+			id TEXT PRIMARY KEY,
+			site_id TEXT NOT NULL,
+			level TEXT NOT NULL,
+			action TEXT NOT NULL,
+			message TEXT NOT NULL,
+			operator TEXT,
+			detail_json TEXT,
+			created_at TEXT NOT NULL
+		);
 		CREATE TABLE IF NOT EXISTS certificates (
 			id TEXT PRIMARY KEY,
 			name TEXT NOT NULL,
@@ -114,6 +140,10 @@ func (s *Store) init() error {
 		CREATE INDEX IF NOT EXISTS idx_sites_ip ON sites(ip);
 		CREATE INDEX IF NOT EXISTS idx_site_versions_site_id ON site_versions(site_id);
 		CREATE INDEX IF NOT EXISTS idx_site_versions_created_at ON site_versions(created_at DESC);
+		CREATE INDEX IF NOT EXISTS idx_site_traffic_logs_site_time ON site_traffic_logs(site_id, created_at DESC);
+		CREATE INDEX IF NOT EXISTS idx_site_traffic_logs_level ON site_traffic_logs(level);
+		CREATE INDEX IF NOT EXISTS idx_site_system_logs_site_time ON site_system_logs(site_id, created_at DESC);
+		CREATE INDEX IF NOT EXISTS idx_site_system_logs_level ON site_system_logs(level);
 	`)
 	return err
 }
@@ -249,6 +279,30 @@ func (s *Store) SaveAudit(action string, target string, operator string, detail 
 		operator,
 		detailText,
 	)
+	if err != nil {
+		return err
+	}
+	if strings.HasPrefix(action, "site_") && target != "" {
+		level := "info"
+		if strings.Contains(action, "delete") || strings.Contains(action, "rollback") {
+			level = "warn"
+		}
+		systemID, idErr := randomID()
+		if idErr != nil {
+			return idErr
+		}
+		_, err = s.db.Exec(
+			`INSERT INTO site_system_logs (id, site_id, level, action, message, operator, detail_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+			systemID,
+			target,
+			level,
+			action,
+			action,
+			operator,
+			detailText,
+			createdAt,
+		)
+	}
 	return err
 }
 

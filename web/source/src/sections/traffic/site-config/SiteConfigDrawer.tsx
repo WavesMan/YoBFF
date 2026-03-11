@@ -15,6 +15,7 @@ import {
   createLBPool,
   deleteLBPool,
   deleteLBRoute,
+  deleteSiteVersion,
   fetchLBPools,
   fetchLBRoutes,
   fetchSite,
@@ -27,6 +28,7 @@ import {
   updateSite,
   validateConfig,
   fetchSiteLogStream,
+  fetchSiteLogHistory,
   updateSiteLogStream,
   fetchCertificates
 } from '../../../admin/api'
@@ -36,6 +38,8 @@ import type {
   LBPool,
   LBRouteRule,
   Site,
+  SiteLogEntry,
+  SiteLogKind,
   SiteLogStream,
   SiteUpdateRequest,
   SSLCertificate
@@ -62,7 +66,7 @@ export function SiteConfigDrawer({ token, operator, siteId, onClose }: SiteConfi
   const [config, setConfig] = useState<Config | null>(null)
   const [versions, setVersions] = useState<ConfigVersion[]>([])
   const [logStream, setLogStream] = useState<SiteLogStream | null>(null)
-  const [logs, setLogs] = useState<string[]>([])
+  const [logs, setLogs] = useState<SiteLogEntry[]>([])
   const [isLogConnected, setIsLogConnected] = useState(false)
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -128,28 +132,6 @@ export function SiteConfigDrawer({ token, operator, siteId, onClose }: SiteConfi
     })
   })
 
-  useEffect(() => {
-    let interval: ReturnType<typeof setInterval>
-    if (isLogConnected && activeTab === 'log') {
-      interval = setInterval(() => {
-        const timestamp = new Date().toISOString()
-        const methods = ['GET', 'POST', 'PUT', 'DELETE']
-        const paths = ['/api/v1/users', '/login', '/dashboard', '/assets/style.css', '/api/v1/sites']
-        const status = [200, 201, 400, 401, 403, 404, 500]
-        
-        const method = methods[Math.floor(Math.random() * methods.length)]
-        const path = paths[Math.floor(Math.random() * paths.length)]
-        const code = status[Math.floor(Math.random() * status.length)]
-        const duration = Math.floor(Math.random() * 200) + 10
-        
-        const logLine = `[${timestamp}] ${method} ${path} ${code} - ${duration}ms`
-        
-        setLogs(prev => [logLine, ...prev].slice(0, 100))
-      }, 1000)
-    }
-    return () => clearInterval(interval)
-  }, [isLogConnected, activeTab])
-
   const loadSite = useCallback(async () => {
     try {
       const data = await fetchSite(token, siteId)
@@ -214,6 +196,17 @@ export function SiteConfigDrawer({ token, operator, siteId, onClose }: SiteConfi
       // Ignore error if log stream config doesn't exist yet
       console.log('Log stream config not found or error', err)
     }
+  }, [token, siteId])
+
+  const loadLogHistory = useCallback(async (params: {
+    kind: SiteLogKind
+    level: string
+    startTime: string
+    endTime: string
+    limit: number
+  }) => {
+    const result = await fetchSiteLogHistory(token, siteId, params)
+    setLogs(result.items || [])
   }, [token, siteId])
 
   useEffect(() => {
@@ -355,6 +348,23 @@ export function SiteConfigDrawer({ token, operator, siteId, onClose }: SiteConfi
       loadVersions()
     } catch (err) {
       setError(err instanceof Error ? err.message : '回滚失败')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleDeleteVersion = async (versionId: string) => {
+    const firstConfirm = window.confirm(`确认删除版本 ${versionId.substring(0, 8)} 吗？`)
+    if (!firstConfirm) return
+    const secondConfirm = window.confirm('二次确认：删除后不可恢复，是否继续？')
+    if (!secondConfirm) return
+    setLoading(true)
+    try {
+      await deleteSiteVersion(token, siteId, versionId)
+      setSuccess(`已删除版本 ${versionId}`)
+      loadVersions()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '删除版本失败')
     } finally {
       setLoading(false)
     }
@@ -602,6 +612,7 @@ export function SiteConfigDrawer({ token, operator, siteId, onClose }: SiteConfi
                 <VersionHistoryTab 
                   versions={versions}
                   handleRollback={handleRollback}
+                  handleDelete={handleDeleteVersion}
                 />
               )}
 
@@ -612,6 +623,7 @@ export function SiteConfigDrawer({ token, operator, siteId, onClose }: SiteConfi
                   setLogStream={setLogStream}
                   logs={logs}
                   setLogs={setLogs}
+                  loadLogHistory={loadLogHistory}
                   isLogConnected={isLogConnected}
                   setIsLogConnected={setIsLogConnected}
                   loading={loading}

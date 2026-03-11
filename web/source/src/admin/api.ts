@@ -19,6 +19,8 @@ import type {
   SiteCreateRequest,
   SiteGroupResponse,
   SiteListResponse,
+  SiteLogHistoryResponse,
+  SiteLogKind,
   SiteLogStream,
   SiteUpdateRequest,
   SSLCertificate,
@@ -287,6 +289,12 @@ export async function rollbackSiteConfig(token: string, id: string, versionId: s
   }, token)
 }
 
+export async function deleteSiteVersion(token: string, id: string, versionId: string) {
+  return apiRequest<{ status: string; version_id: string }>(`${API_BASE}/sites/${id}/config/versions/${encodeURIComponent(versionId)}`, {
+    method: 'DELETE',
+  }, token)
+}
+
 export async function fetchSiteGroups(token: string, by: 'hostname' | 'ip') {
   return apiRequest<SiteGroupResponse>(`${API_BASE}/site-groups?by=${by}`, {}, token)
 }
@@ -300,6 +308,26 @@ export async function updateSiteLogStream(token: string, id: string, filterQuery
     method: 'PUT',
     body: JSON.stringify({ site_id: id, filter_query: filterQuery }),
   }, token)
+}
+
+export async function fetchSiteLogHistory(
+  token: string,
+  id: string,
+  params: {
+    kind: SiteLogKind
+    level: string
+    startTime: string
+    endTime: string
+    limit: number
+  }
+) {
+  const search = new URLSearchParams()
+  if (params.kind) search.set('kind', params.kind)
+  if (params.level) search.set('level', params.level)
+  if (params.startTime) search.set('start_time', params.startTime)
+  if (params.endTime) search.set('end_time', params.endTime)
+  if (params.limit > 0) search.set('limit', String(params.limit))
+  return apiRequest<SiteLogHistoryResponse>(`${API_BASE}/sites/${id}/log/history?${search.toString()}`, {}, token)
 }
 
 export async function fetchLBPools(token: string) {

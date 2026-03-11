@@ -269,10 +269,10 @@ func TestSiteRoutes_MethodAndPayloadErrors(t *testing.T) {
 			code:   http.StatusMethodNotAllowed,
 		},
 		{
-			name:   "version detail method not allowed",
+			name:   "version delete not found",
 			method: http.MethodDelete,
 			path:   "/api/v1/sites/" + site.ID + "/config/versions/any",
-			code:   http.StatusMethodNotAllowed,
+			code:   http.StatusNotFound,
 		},
 		{
 			name:   "rollback method not allowed",

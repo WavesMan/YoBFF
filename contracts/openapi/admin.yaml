@@ -715,7 +715,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
-          $ref: "#/components/responses/BadRequest"
+          $ref: "#/components/responses/SiteNotFound"
         "429":
           $ref: "#/components/responses/RateLimited"
         "503":
@@ -749,7 +749,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
-          $ref: "#/components/responses/BadRequest"
+          $ref: "#/components/responses/SiteNotFound"
         "429":
           $ref: "#/components/responses/RateLimited"
         "503":
@@ -775,7 +775,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
-          $ref: "#/components/responses/BadRequest"
+          $ref: "#/components/responses/SiteNotFound"
         "429":
           $ref: "#/components/responses/RateLimited"
         "503":
@@ -890,7 +890,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
-          $ref: "#/components/responses/BadRequest"
+          $ref: "#/components/responses/SiteNotFound"
         "429":
           $ref: "#/components/responses/RateLimited"
         "503":
@@ -1009,7 +1009,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
-          $ref: "#/components/responses/BadRequest"
+          $ref: "#/components/responses/SiteNotFound"
         "429":
           $ref: "#/components/responses/RateLimited"
         "503":
@@ -1051,7 +1051,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
-          $ref: "#/components/responses/BadRequest"
+          $ref: "#/components/responses/SiteNotFound"
         "429":
           $ref: "#/components/responses/RateLimited"
         "503":
@@ -1091,7 +1091,46 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
+          $ref: "#/components/responses/VersionNotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/AuthUnavailable"
+    delete:
+      summary: 删除站点配置历史版本
+      parameters:
+        - in: path
+          name: site_id
+          schema:
+            type: string
+          required: true
+        - in: path
+          name: version_id
+          schema:
+            type: string
+          required: true
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/RequestID"
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/RateLimitLimit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/RateLimitRemaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/RateLimitReset"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SiteVersionDeleteResponse"
+        "400":
           $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/VersionNotFound"
         "429":
           $ref: "#/components/responses/RateLimited"
         "503":
@@ -1138,7 +1177,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
-          $ref: "#/components/responses/BadRequest"
+          $ref: "#/components/responses/VersionNotFound"
         "429":
           $ref: "#/components/responses/RateLimited"
         "503":
@@ -1171,7 +1210,87 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
+          $ref: "#/components/responses/LogStreamNotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/AuthUnavailable"
+  /api/v1/sites/{site_id}/log/history:
+    get:
+      summary: 查询站点历史日志
+      parameters:
+        - in: path
+          name: site_id
+          schema:
+            type: string
+          required: true
+        - in: query
+          name: kind
+          schema:
+            type: string
+            enum:
+              - all
+              - traffic
+              - system
+          required: false
+          description: 日志类型过滤，默认 all
+        - in: query
+          name: level
+          schema:
+            type: string
+            enum:
+              - debug
+              - info
+              - warn
+              - error
+          required: false
+          description: 日志等级过滤
+        - in: query
+          name: start_time
+          schema:
+            type: string
+            format: date-time
+          required: false
+          description: 起始时间，RFC3339 格式
+        - in: query
+          name: end_time
+          schema:
+            type: string
+            format: date-time
+          required: false
+          description: 结束时间，RFC3339 格式
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 500
+            default: 100
+          required: false
+          description: 返回条数上限
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/RequestID"
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/RateLimitLimit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/RateLimitRemaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/RateLimitReset"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SiteLogHistoryResponse"
+        "400":
           $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/SiteNotFound"
         "429":
           $ref: "#/components/responses/RateLimited"
         "503":
@@ -1211,7 +1330,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
-          $ref: "#/components/responses/BadRequest"
+          $ref: "#/components/responses/SiteNotFound"
         "429":
           $ref: "#/components/responses/RateLimited"
         "503":
@@ -1397,6 +1516,36 @@ components:
             error_code: route_not_found
             message: route not found
             request_id: req-123456
+    SiteNotFound:
+      description: 站点不存在
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error_code: site_not_found
+            message: site not found
+            request_id: req_109238475a
+    VersionNotFound:
+      description: 站点配置版本不存在
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error_code: version_not_found
+            message: version not found
+            request_id: req_109238475b
+    LogStreamNotFound:
+      description: 站点日志流配置不存在
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error_code: log_stream_not_found
+            message: log stream not found
+            request_id: req_109238475c
   schemas:
     ErrorResponse:
       type: object
@@ -1490,6 +1639,18 @@ components:
           type: string
         version_id:
           type: string
+    SiteVersionDeleteResponse:
+      type: object
+      required:
+        - status
+        - version_id
+      properties:
+        status:
+          type: string
+          example: deleted
+        version_id:
+          type: string
+          example: 8d0de2d4a6f64c5c83f33c4b49b8a3c1
     Site:
       type: object
       required:
@@ -1597,6 +1758,66 @@ components:
         updated_at:
           type: string
           format: date-time
+    SiteLogEntry:
+      type: object
+      required:
+        - id
+        - site_id
+        - kind
+        - level
+        - message
+        - created_at
+      properties:
+        id:
+          type: string
+        site_id:
+          type: string
+        kind:
+          type: string
+          enum:
+            - traffic
+            - system
+        level:
+          type: string
+          example: info
+        message:
+          type: string
+        request_id:
+          type: string
+        client_ip:
+          type: string
+        host:
+          type: string
+        method:
+          type: string
+          example: GET
+        path:
+          type: string
+          example: /healthz
+        status_code:
+          type: integer
+          format: int32
+        latency_ms:
+          type: integer
+          format: int64
+        operator:
+          type: string
+        action:
+          type: string
+        detail:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    SiteLogHistoryResponse:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/SiteLogEntry"
     ConfigDiffItem:
       type: object
       required:

@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 
 	"YoBFF/internal/store"
 )
@@ -46,6 +48,54 @@ func (s *Server) siteLogStream(w http.ResponseWriter, r *http.Request, siteID st
 	default:
 		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed", r)
 	}
+}
+
+func (s *Server) siteLogHistory(w http.ResponseWriter, r *http.Request, siteID string) {
+	if s.store == nil {
+		writeError(w, http.StatusServiceUnavailable, "store_unavailable", "site store unavailable", r)
+		return
+	}
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed", r)
+		return
+	}
+	query := store.SiteLogQuery{
+		Kind:  strings.TrimSpace(r.URL.Query().Get("kind")),
+		Level: strings.TrimSpace(r.URL.Query().Get("level")),
+	}
+	startTime := strings.TrimSpace(r.URL.Query().Get("start_time"))
+	endTime := strings.TrimSpace(r.URL.Query().Get("end_time"))
+	if startTime != "" {
+		if _, err := time.Parse(time.RFC3339, startTime); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_request", "start_time must be RFC3339", r)
+			return
+		}
+		query.StartTime = startTime
+	}
+	if endTime != "" {
+		if _, err := time.Parse(time.RFC3339, endTime); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_request", "end_time must be RFC3339", r)
+			return
+		}
+		query.EndTime = endTime
+	}
+	limitRaw := strings.TrimSpace(r.URL.Query().Get("limit"))
+	if limitRaw != "" {
+		limit, err := strconv.Atoi(limitRaw)
+		if err != nil || limit <= 0 {
+			writeError(w, http.StatusBadRequest, "invalid_request", "limit must be positive", r)
+			return
+		}
+		query.Limit = limit
+	}
+	items, err := s.store.ListSiteLogs(siteID, query)
+	if err != nil {
+		writeSiteError(w, err, r)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"items": items,
+	})
 }
 
 // writeSiteError 将站点相关错误映射为统一响应结构，便于前端处理。

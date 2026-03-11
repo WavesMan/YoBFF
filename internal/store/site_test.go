@@ -241,3 +241,64 @@ func TestStore_DeleteSiteAndUpdateConfig_SQLFailures(t *testing.T) {
 		t.Fatalf("缺失日志流表时删除站点应失败")
 	}
 }
+
+func TestStore_SiteVersionDeleteAndSiteLogs(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test6.db")
+	s, err := NewSQLiteStore(dbPath)
+	if err != nil {
+		t.Fatalf("初始化存储失败: %v", err)
+	}
+	defer s.Close()
+
+	site, err := s.CreateSite(Site{Name: "logs", Hostname: "logs.example.com", IP: "10.0.0.66"})
+	if err != nil {
+		t.Fatalf("创建站点失败: %v", err)
+	}
+	if _, err = s.GetSiteIDByHostname("LOGS.EXAMPLE.COM"); err != nil {
+		t.Fatalf("按域名查询站点ID失败: %v", err)
+	}
+
+	version, err := s.UpdateSiteConfig(site.ID, config.Config{
+		Security: config.SecurityConfig{BlockPageHTML: "<html>ok</html>"},
+	}, "tester", "manual")
+	if err != nil {
+		t.Fatalf("更新配置失败: %v", err)
+	}
+	if err = s.DeleteSiteVersion(site.ID, version.ID); err != nil {
+		t.Fatalf("删除站点版本失败: %v", err)
+	}
+	if err = s.DeleteSiteVersion(site.ID, version.ID); err != ErrSiteVersionMissing {
+		t.Fatalf("重复删除版本错误不匹配: %v", err)
+	}
+
+	if err = s.SaveSiteTrafficLog(site.ID, SiteTrafficLogWrite{
+		Level:      "error",
+		EventType:  "proxy",
+		Message:    "upstream timeout",
+		RequestID:  "r-1",
+		ClientIP:   "127.0.0.1",
+		Host:       "logs.example.com",
+		Method:     "GET",
+		Path:       "/healthz",
+		StatusCode: 502,
+		LatencyMS:  88,
+	}); err != nil {
+		t.Fatalf("写入流量日志失败: %v", err)
+	}
+	if err = s.SaveAudit("site_config_version_delete", site.ID, "tester", map[string]any{"version_id": version.ID}); err != nil {
+		t.Fatalf("写入系统日志失败: %v", err)
+	}
+
+	logs, err := s.ListSiteLogs(site.ID, SiteLogQuery{
+		Kind:  "all",
+		Level: "",
+		Limit: 20,
+	})
+	if err != nil {
+		t.Fatalf("查询日志失败: %v", err)
+	}
+	if len(logs) < 2 {
+		t.Fatalf("日志数量不足: got=%d", len(logs))
+	}
+}
