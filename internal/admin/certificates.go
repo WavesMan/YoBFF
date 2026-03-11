@@ -25,6 +25,10 @@ type sslCertificateView struct {
 	CreatedAt time.Time `json:"createdAt"`
 }
 
+// toSSLCertificateView 将内部证书对象转换为对外展示结构。
+// 参数：cert 为存储层证书对象（含私钥内容等敏感字段）。
+// 返回：脱敏后的证书视图对象。
+// 异常：无。
 func toSSLCertificateView(cert config.SSLCertificate) sslCertificateView {
 	return sslCertificateView{
 		ID:        cert.ID,
@@ -36,9 +40,10 @@ func toSSLCertificateView(cert config.SSLCertificate) sslCertificateView {
 	}
 }
 
-// handleCertificates 处理证书列表查询与上传。
-// GET /api/v1/certs: 分页查询证书。
-// POST /api/v1/certs: 上传新证书。
+// handleCertificates 处理证书列表查询与上传请求。
+// 参数：w 为响应写入器，r 为请求对象。
+// 返回：无。
+// 异常：存储不可用、请求方法不支持、参数非法或存储失败时返回错误响应。
 func (s *Server) handleCertificates(w http.ResponseWriter, r *http.Request) {
 	if s.store == nil {
 		writeError(w, http.StatusServiceUnavailable, "store_unavailable", "site store unavailable", r)
@@ -54,8 +59,10 @@ func (s *Server) handleCertificates(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// handleCertificateDetail 处理单个证书的查询与删除。
-// DELETE /api/v1/certs/{id}: 删除指定证书。
+// handleCertificateDetail 处理证书详情相关请求（当前仅支持删除）。
+// 参数：w 为响应写入器，r 为请求对象。
+// 返回：无。
+// 异常：存储不可用、证书ID缺失、请求方法不支持或删除失败时返回错误响应。
 func (s *Server) handleCertificateDetail(w http.ResponseWriter, r *http.Request) {
 	if s.store == nil {
 		writeError(w, http.StatusServiceUnavailable, "store_unavailable", "site store unavailable", r)
@@ -76,6 +83,9 @@ func (s *Server) handleCertificateDetail(w http.ResponseWriter, r *http.Request)
 }
 
 // listCertificates 分页返回已上传的 SSL 证书列表。
+// 参数：w 为响应写入器，r 为请求对象。
+// 返回：无。
+// 异常：存储查询失败时返回错误响应。
 func (s *Server) listCertificates(w http.ResponseWriter, r *http.Request) {
 	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 	if page < 1 {
@@ -105,7 +115,10 @@ func (s *Server) listCertificates(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// uploadCertificate 接收并解析上传的 SSL 证书文件。
+// uploadCertificate 接收并解析上传的 SSL 证书与私钥文件。
+// 参数：w 为响应写入器，r 为请求对象。
+// 返回：无。
+// 异常：表单解析失败、文件缺失、证书/私钥格式非法或存储失败时返回错误响应。
 func (s *Server) uploadCertificate(w http.ResponseWriter, r *http.Request) {
 	// 限制上传大小 1MB
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
@@ -192,6 +205,9 @@ func (s *Server) uploadCertificate(w http.ResponseWriter, r *http.Request) {
 }
 
 // deleteCertificate 删除指定的 SSL 证书。
+// 参数：w 为响应写入器，r 为请求对象，id 为证书ID。
+// 返回：无。
+// 异常：删除失败时返回错误响应。
 func (s *Server) deleteCertificate(w http.ResponseWriter, r *http.Request, id string) {
 	if err := s.store.DeleteCertificate(id); err != nil {
 		s.runtime.Logger().Error("failed to delete certificate", zap.Error(err), zap.String("id", id))
@@ -261,6 +277,10 @@ func normalizePrivateKeyBytes(raw []byte) ([]byte, error) {
 	return nil, fmt.Errorf("failed to decode PEM block")
 }
 
+// extractCertInfo 从证书对象提取展示与路由匹配需要的信息。
+// 参数：cert 为已解析的证书对象。
+// 返回：domains 为域名集合（已去重/清洗），notAfter 为过期时间，issuer 为颁发机构名称。
+// 异常：无。
 func extractCertInfo(cert *x509.Certificate) (domains []string, notAfter time.Time, issuer string) {
 	domains = append(domains, cert.Subject.CommonName)
 	domains = append(domains, cert.DNSNames...)
@@ -280,6 +300,10 @@ func extractCertInfo(cert *x509.Certificate) (domains []string, notAfter time.Ti
 	return cleanDomains, cert.NotAfter, cert.Issuer.CommonName
 }
 
+// parseCertInfo 解析证书内容并提取域名、有效期和颁发者信息。
+// 参数：certRaw 为证书文件字节，支持 PEM/DER 编码。
+// 返回：domains 为域名集合（已去重/清洗），notAfter 为过期时间，issuer 为颁发机构名称。
+// 异常：证书格式非法或解析失败时返回错误。
 func parseCertInfo(certRaw []byte) (domains []string, notAfter time.Time, issuer string, err error) {
 	_, cert, err := normalizeCertificateBytes(certRaw)
 	if err != nil {

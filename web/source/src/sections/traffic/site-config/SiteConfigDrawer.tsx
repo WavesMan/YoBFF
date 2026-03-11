@@ -113,7 +113,7 @@ export function SiteConfigDrawer({ token, operator, siteId, onClose }: SiteConfi
   }, [token])
 
   useEffect(() => {
-    if (activeTab === 'security') {
+    if (activeTab === 'security' || activeTab === 'https') {
       loadCertificates()
     }
   }, [activeTab, loadCertificates])
@@ -615,7 +615,10 @@ export function SiteConfigDrawer({ token, operator, siteId, onClose }: SiteConfi
               
               {activeTab === 'https' && (
                 <HttpsCertTab 
+                  site={site}
                   config={config}
+                  updateConfig={updateConfig}
+                  filteredCerts={filteredCerts}
                   handleRemoveCert={handleRemoveCert}
                 />
               )}

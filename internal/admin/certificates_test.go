@@ -24,6 +24,10 @@ import (
 	"go.uber.org/zap"
 )
 
+// buildCertHandler 构建带鉴权中间件的证书接口测试处理器。
+// 参数：t 为测试上下文。
+// 返回：可直接用于请求回放的 HTTP Handler。
+// 异常：初始化失败时通过 t.Fatalf 终止测试。
 func buildCertHandler(t *testing.T) http.Handler {
 	t.Helper()
 	t.Setenv("ADMIN_API_TOKEN", "token")
@@ -49,6 +53,10 @@ func buildCertHandler(t *testing.T) http.Handler {
 	return srv.Handler()
 }
 
+// buildCertServer 构建证书接口测试所需的 Server 与底层存储实例。
+// 参数：t 为测试上下文。
+// 返回：已初始化的 Server 与对应的 Store。
+// 异常：初始化失败时通过 t.Fatalf 终止测试。
 func buildCertServer(t *testing.T) (*Server, *store.Store) {
 	t.Helper()
 	t.Setenv("ADMIN_API_TOKEN", "token")
@@ -73,6 +81,10 @@ func buildCertServer(t *testing.T) (*Server, *store.Store) {
 	return NewServer(manager, logRuntime, pipeline, siteStore), siteStore
 }
 
+// requestAuthJSON 以固定鉴权头构造并回放一次请求。
+// 参数：t 为测试上下文，handler 为目标处理器，method 为请求方法，target 为路径，contentType 为请求内容类型，body 为请求体字节。
+// 返回：响应录制器，用于断言状态码与响应体。
+// 异常：无。
 func requestAuthJSON(t *testing.T, handler http.Handler, method string, target string, contentType string, body []byte) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequest(method, "http://example.com"+target, bytes.NewReader(body))
@@ -87,6 +99,10 @@ func requestAuthJSON(t *testing.T, handler http.Handler, method string, target s
 	return rec
 }
 
+// buildCertificatePEM 生成用于测试的自签名证书与私钥（PEM 编码）。
+// 参数：t 为测试上下文。
+// 返回：certPEM 为证书 PEM，keyPEM 为私钥 PEM。
+// 异常：生成或签发失败时通过 t.Fatalf 终止测试。
 func buildCertificatePEM(t *testing.T) ([]byte, []byte) {
 	t.Helper()
 	key, err := rsa.GenerateKey(rand.Reader, 1024)
@@ -112,6 +128,10 @@ func buildCertificatePEM(t *testing.T) ([]byte, []byte) {
 	return certPEM, keyPEM
 }
 
+// TestCertificateRoutes_UploadListDelete 验证证书上传、列表与删除端到端流程可用。
+// 参数：t 为测试上下文。
+// 返回：无。
+// 异常：断言失败时通过 t.Fatalf 终止测试。
 func TestCertificateRoutes_UploadListDelete(t *testing.T) {
 	handler := buildCertHandler(t)
 	certPEM, keyPEM := buildCertificatePEM(t)
@@ -171,6 +191,10 @@ func TestCertificateRoutes_UploadListDelete(t *testing.T) {
 	}
 }
 
+// TestCertificateRoutes_UploadDERCertificate 验证上传 DER 编码证书时服务端可正确规范化为 PEM 并保存。
+// 参数：t 为测试上下文。
+// 返回：无。
+// 异常：断言失败时通过 t.Fatalf 终止测试。
 func TestCertificateRoutes_UploadDERCertificate(t *testing.T) {
 	handler := buildCertHandler(t)
 	certPEM, keyPEM := buildCertificatePEM(t)
@@ -208,6 +232,10 @@ func TestCertificateRoutes_UploadDERCertificate(t *testing.T) {
 	}
 }
 
+// TestCertificateRoutes_ErrorsAndParser 覆盖证书解析与输入校验的错误分支。
+// 参数：t 为测试上下文。
+// 返回：无。
+// 异常：断言失败时通过 t.Fatalf 终止测试。
 func TestCertificateRoutes_ErrorsAndParser(t *testing.T) {
 	handler := buildCertHandler(t)
 
@@ -236,6 +264,10 @@ func TestCertificateRoutes_ErrorsAndParser(t *testing.T) {
 	}
 }
 
+// TestCertificateRoutes_UploadErrorPathsAndDeleteError 覆盖上传缺参、证书非法与存储失败等错误路径。
+// 参数：t 为测试上下文。
+// 返回：无。
+// 异常：断言失败时通过 t.Fatalf 终止测试。
 func TestCertificateRoutes_UploadErrorPathsAndDeleteError(t *testing.T) {
 	t.Setenv("ADMIN_API_TOKEN", "token")
 	t.Setenv("ADMIN_RATE_LIMIT_PER_MIN", "60")
@@ -307,6 +339,10 @@ func TestCertificateRoutes_UploadErrorPathsAndDeleteError(t *testing.T) {
 	}
 }
 
+// TestCertificateMethods_ListDeleteAndUploadBranches 直接调用证书方法覆盖分页默认、删除与上传分支。
+// 参数：t 为测试上下文。
+// 返回：无。
+// 异常：断言失败时通过 t.Fatalf 终止测试。
 func TestCertificateMethods_ListDeleteAndUploadBranches(t *testing.T) {
 	srv, siteStore := buildCertServer(t)
 	certPEM, keyPEM := buildCertificatePEM(t)
@@ -430,6 +466,10 @@ func TestCertificateMethods_ListDeleteAndUploadBranches(t *testing.T) {
 	}
 }
 
+// storeConfigCert 构造可写入存储层的证书对象。
+// 参数：id 为证书ID，certPEM 为证书 PEM，keyPEM 为私钥 PEM。
+// 返回：证书对象。
+// 异常：无。
 func storeConfigCert(id string, certPEM []byte, keyPEM []byte) config.SSLCertificate {
 	return config.SSLCertificate{
 		ID:        id,

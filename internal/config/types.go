@@ -31,6 +31,7 @@ type DataPlaneConfig struct {
 	HTTPListenAddr  string `json:"httpListenAddr"`
 	HTTPSListenAddr string `json:"httpsListenAddr"`
 	EnableHTTPS     bool   `json:"enableHttps"`
+	CertID          string `json:"certId"`
 }
 
 // ControlPlaneConfig 表示控制平面监听参数。
