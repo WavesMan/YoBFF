@@ -20,6 +20,7 @@ type Config struct {
 	ControlPlane    ControlPlaneConfig `json:"controlPlane"`
 	Security        SecurityConfig     `json:"security"`
 	Routing         RoutingConfig      `json:"routing"`
+	LoadBalancer    LoadBalancerConfig `json:"loadBalancer"`
 	CDNSync         CDNSyncConfig      `json:"cdnSync"`
 	Certificates    []Certificate      `json:"certificates"`
 	SSLCertificates []SSLCertificate   `json:"sslCertificates"`
@@ -90,6 +91,37 @@ type DomainRule struct {
 	Domain     string `json:"domain"`
 	Upstream   string `json:"upstream"`
 	ForceHTTPS bool   `json:"forceHttps"`
+}
+
+// LoadBalancerConfig 表示流量池与路由绑定配置。
+type LoadBalancerConfig struct {
+	DefaultPoolID string        `json:"defaultPoolId"`
+	Pools         []LBPool      `json:"pools"`
+	Routes        []LBRouteRule `json:"routes"`
+}
+
+// LBPool 表示可被域名路由绑定的流量池。
+type LBPool struct {
+	ID       string   `json:"id"`
+	Name     string   `json:"name"`
+	Strategy string   `json:"strategy"`
+	Nodes    []LBNode `json:"nodes"`
+}
+
+// LBNode 表示流量池中的单个上游节点。
+type LBNode struct {
+	ID       string `json:"id"`
+	Upstream string `json:"upstream"`
+	Weight   int    `json:"weight"`
+	Enabled  bool   `json:"enabled"`
+}
+
+// LBRouteRule 表示域名到流量池的绑定规则。
+type LBRouteRule struct {
+	Domain         string `json:"domain"`
+	PoolID         string `json:"poolId"`
+	FallbackPoolID string `json:"fallbackPoolId"`
+	ForceHTTPS     bool   `json:"forceHttps"`
 }
 
 // Certificate 表示证书加载来源与域名绑定关系。

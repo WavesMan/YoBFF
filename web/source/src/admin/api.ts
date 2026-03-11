@@ -75,6 +75,11 @@ export function normalizeConfig(config?: Config | null): Config {
       defaultUpstream: config?.routing?.defaultUpstream ?? '',
       domains: config?.routing?.domains ?? [],
     },
+    loadBalancer: {
+      defaultPoolId: config?.loadBalancer?.defaultPoolId ?? '',
+      pools: config?.loadBalancer?.pools ?? [],
+      routes: config?.loadBalancer?.routes ?? [],
+    },
     certificates: config?.certificates ?? [],
     cdnSync: {
       enabled: config?.cdnSync?.enabled ?? false,

@@ -97,6 +97,8 @@ func ValidateConfig(cfg Config, configPath string) []ValidationIssue {
 		}
 	}
 
+	validateLoadBalancerConfig(cfg.LoadBalancer, &issues)
+
 	if len(cfg.Certificates) > 0 {
 		baseDir := filepath.Dir(configPath)
 		for idx, item := range cfg.Certificates {
@@ -157,4 +159,116 @@ func ValidateConfig(cfg Config, configPath string) []ValidationIssue {
 	}
 
 	return issues
+}
+
+// validateLoadBalancerConfig 校验流量池与域名绑定配置。
+// 参数：lb 为负载均衡配置，issues 为问题列表写入目标。
+// 返回：无。
+// 异常：无。
+func validateLoadBalancerConfig(lb LoadBalancerConfig, issues *[]ValidationIssue) {
+	poolIndex := make(map[string]int, len(lb.Pools))
+	for idx, pool := range lb.Pools {
+		poolID := strings.TrimSpace(pool.ID)
+		if poolID == "" {
+			*issues = append(*issues, ValidationIssue{
+				Path:    fmt.Sprintf("loadBalancer.pools[%d].id", idx),
+				Message: "pool id is required",
+			})
+			continue
+		}
+		if prev, exists := poolIndex[poolID]; exists {
+			*issues = append(*issues, ValidationIssue{
+				Path:    fmt.Sprintf("loadBalancer.pools[%d].id", idx),
+				Message: fmt.Sprintf("pool id is duplicated with index %d", prev),
+			})
+		}
+		poolIndex[poolID] = idx
+		validateLoadBalancerPoolNodes(idx, pool, issues)
+	}
+
+	if lb.DefaultPoolID != "" {
+		if _, ok := poolIndex[strings.TrimSpace(lb.DefaultPoolID)]; !ok {
+			*issues = append(*issues, ValidationIssue{
+				Path:    "loadBalancer.defaultPoolId",
+				Message: "default pool id not found in pools",
+			})
+		}
+	}
+
+	for idx, route := range lb.Routes {
+		domain := strings.TrimSpace(route.Domain)
+		if domain == "" {
+			*issues = append(*issues, ValidationIssue{
+				Path:    fmt.Sprintf("loadBalancer.routes[%d].domain", idx),
+				Message: "domain is required",
+			})
+		}
+		poolID := strings.TrimSpace(route.PoolID)
+		if poolID == "" {
+			*issues = append(*issues, ValidationIssue{
+				Path:    fmt.Sprintf("loadBalancer.routes[%d].poolId", idx),
+				Message: "pool id is required",
+			})
+		} else if _, ok := poolIndex[poolID]; !ok {
+			*issues = append(*issues, ValidationIssue{
+				Path:    fmt.Sprintf("loadBalancer.routes[%d].poolId", idx),
+				Message: "pool id not found in pools",
+			})
+		}
+		fallbackID := strings.TrimSpace(route.FallbackPoolID)
+		if fallbackID != "" {
+			if _, ok := poolIndex[fallbackID]; !ok {
+				*issues = append(*issues, ValidationIssue{
+					Path:    fmt.Sprintf("loadBalancer.routes[%d].fallbackPoolId", idx),
+					Message: "fallback pool id not found in pools",
+				})
+			}
+		}
+	}
+}
+
+// validateLoadBalancerPoolNodes 校验流量池节点配置。
+// 参数：poolIndex 为池索引，pool 为待校验流量池，issues 为问题列表写入目标。
+// 返回：无。
+// 异常：无。
+func validateLoadBalancerPoolNodes(poolIndexValue int, pool LBPool, issues *[]ValidationIssue) {
+	nodeIndex := make(map[string]int, len(pool.Nodes))
+	for nodeIdx, node := range pool.Nodes {
+		nodeID := strings.TrimSpace(node.ID)
+		if nodeID == "" {
+			*issues = append(*issues, ValidationIssue{
+				Path:    fmt.Sprintf("loadBalancer.pools[%d].nodes[%d].id", poolIndexValue, nodeIdx),
+				Message: "node id is required",
+			})
+		} else if prev, exists := nodeIndex[nodeID]; exists {
+			*issues = append(*issues, ValidationIssue{
+				Path:    fmt.Sprintf("loadBalancer.pools[%d].nodes[%d].id", poolIndexValue, nodeIdx),
+				Message: fmt.Sprintf("node id is duplicated with index %d", prev),
+			})
+		}
+		nodeIndex[nodeID] = nodeIdx
+
+		upstream := strings.TrimSpace(node.Upstream)
+		if upstream == "" {
+			*issues = append(*issues, ValidationIssue{
+				Path:    fmt.Sprintf("loadBalancer.pools[%d].nodes[%d].upstream", poolIndexValue, nodeIdx),
+				Message: "upstream is required",
+			})
+		} else {
+			parsed, err := url.Parse(upstream)
+			if err != nil || parsed.Host == "" || parsed.Scheme == "" {
+				*issues = append(*issues, ValidationIssue{
+					Path:    fmt.Sprintf("loadBalancer.pools[%d].nodes[%d].upstream", poolIndexValue, nodeIdx),
+					Message: "upstream url is invalid",
+				})
+			}
+		}
+
+		if node.Weight <= 0 {
+			*issues = append(*issues, ValidationIssue{
+				Path:    fmt.Sprintf("loadBalancer.pools[%d].nodes[%d].weight", poolIndexValue, nodeIdx),
+				Message: "weight must be positive",
+			})
+		}
+	}
 }

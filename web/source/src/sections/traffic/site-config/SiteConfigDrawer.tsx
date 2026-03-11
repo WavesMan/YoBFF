@@ -23,7 +23,16 @@ import {
   updateSiteLogStream,
   fetchCertificates
 } from '../../../admin/api'
-import type { Config, ConfigVersion, DomainRule, Site, SiteLogStream, SiteUpdateRequest, SSLCertificate } from '../../../admin/types'
+import type {
+  Config,
+  ConfigVersion,
+  LBPool,
+  LBRouteRule,
+  Site,
+  SiteLogStream,
+  SiteUpdateRequest,
+  SSLCertificate
+} from '../../../admin/types'
 
 import { BasicSettingsTab } from './tabs/BasicSettingsTab'
 import { ProxyRulesTab } from './tabs/ProxyRulesTab'
@@ -54,10 +63,16 @@ export function SiteConfigDrawer({ token, operator, siteId, onClose }: SiteConfi
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
 
-  // New Domain Rule State
-  const [newDomain, setNewDomain] = useState<DomainRule>({
+  const [newPool, setNewPool] = useState<LBPool>({
+    id: '',
+    name: '',
+    strategy: 'weighted_rr',
+    nodes: []
+  })
+  const [newRoute, setNewRoute] = useState<LBRouteRule>({
     domain: '',
-    upstream: '',
+    poolId: '',
+    fallbackPoolId: '',
     forceHttps: true
   })
   
@@ -270,24 +285,46 @@ export function SiteConfigDrawer({ token, operator, siteId, onClose }: SiteConfi
     setConfig(updater(config))
   }
 
-  const handleAddDomain = () => {
-    if (!newDomain.domain || !newDomain.upstream) return
+  const handleAddPool = () => {
+    if (!newPool.id || !newPool.name) return
     updateConfig(prev => ({
       ...prev,
-      routing: {
-        ...prev.routing,
-        domains: [...(prev.routing?.domains || []), newDomain]
+      loadBalancer: {
+        ...prev.loadBalancer,
+        pools: [...(prev.loadBalancer?.pools || []), newPool]
       }
     }))
-    setNewDomain({ domain: '', upstream: '', forceHttps: true })
+    setNewPool({ id: '', name: '', strategy: 'weighted_rr', nodes: [] })
   }
 
-  const handleRemoveDomain = (index: number) => {
+  const handleRemovePool = (index: number) => {
     updateConfig(prev => ({
       ...prev,
-      routing: {
-        ...prev.routing,
-        domains: (prev.routing?.domains || []).filter((_, i) => i !== index)
+      loadBalancer: {
+        ...prev.loadBalancer,
+        pools: (prev.loadBalancer?.pools || []).filter((_, i) => i !== index)
+      }
+    }))
+  }
+
+  const handleAddRoute = () => {
+    if (!newRoute.domain || !newRoute.poolId) return
+    updateConfig(prev => ({
+      ...prev,
+      loadBalancer: {
+        ...prev.loadBalancer,
+        routes: [...(prev.loadBalancer?.routes || []), newRoute]
+      }
+    }))
+    setNewRoute({ domain: '', poolId: '', fallbackPoolId: '', forceHttps: true })
+  }
+
+  const handleRemoveRoute = (index: number) => {
+    updateConfig(prev => ({
+      ...prev,
+      loadBalancer: {
+        ...prev.loadBalancer,
+        routes: (prev.loadBalancer?.routes || []).filter((_, i) => i !== index)
       }
     }))
   }
@@ -395,10 +432,14 @@ export function SiteConfigDrawer({ token, operator, siteId, onClose }: SiteConfi
                 <ProxyRulesTab 
                   config={config}
                   updateConfig={updateConfig}
-                  newDomain={newDomain}
-                  setNewDomain={setNewDomain}
-                  handleAddDomain={handleAddDomain}
-                  handleRemoveDomain={handleRemoveDomain}
+                  newPool={newPool}
+                  setNewPool={setNewPool}
+                  newRoute={newRoute}
+                  setNewRoute={setNewRoute}
+                  handleAddPool={handleAddPool}
+                  handleRemovePool={handleRemovePool}
+                  handleAddRoute={handleAddRoute}
+                  handleRemoveRoute={handleRemoveRoute}
                 />
               )}
               

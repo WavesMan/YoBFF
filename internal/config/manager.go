@@ -31,6 +31,10 @@ type snapshot struct {
 	allowAll         bool
 	allowedCIDRs     []netip.Prefix
 	cdnProviderCIDRs map[string][]netip.Prefix
+	lbPools          map[string]*compiledPool
+	lbExactRoutes    map[string]lbRouteItem
+	lbWildcardRoutes []lbWildcardItem
+	lbDefaultRoute   *lbRouteItem
 	exactRoutes      map[string]routeItem
 	wildcardRoutes   []wildcardItem
 	defaultRoute     *routeItem
@@ -208,6 +212,13 @@ func (m *Manager) ResolveRoute(host string) (RouteMatch, bool) {
 	}
 
 	normalizedHost := normalizeHost(host)
+	if route, ok := data.resolveLoadBalancerRoute(normalizedHost); ok {
+		return RouteMatch{
+			Domain:     route.Domain,
+			ForceHTTPS: route.ForceHTTPS,
+			Target:     route.Target,
+		}, true
+	}
 	if route, ok := data.exactRoutes[normalizedHost]; ok {
 		return RouteMatch{Domain: route.Domain, ForceHTTPS: route.ForceHTTPS, Target: route.Target}, true
 	}
@@ -351,6 +362,9 @@ func buildSnapshot(cfg Config, configPath string, dynamicCIDRs []string, cdnStat
 	data := &snapshot{
 		cfg:              cfg,
 		cdnProviderCIDRs: make(map[string][]netip.Prefix),
+		lbPools:          make(map[string]*compiledPool),
+		lbExactRoutes:    make(map[string]lbRouteItem),
+		lbWildcardRoutes: make([]lbWildcardItem, 0),
 		exactRoutes:      make(map[string]routeItem),
 		wildcardRoutes:   make([]wildcardItem, 0),
 		certificates:     make(map[string]*tls.Certificate),
@@ -388,6 +402,10 @@ func buildSnapshot(cfg Config, configPath string, dynamicCIDRs []string, cdnStat
 			}
 			data.cdnProviderCIDRs[provider] = append(data.cdnProviderCIDRs[provider], prefix)
 		}
+	}
+
+	if err := compileLoadBalancerConfig(data, cfg.LoadBalancer); err != nil {
+		return nil, err
 	}
 
 	for _, rule := range cfg.Routing.Domains {

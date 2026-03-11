@@ -383,6 +383,203 @@ paths:
           $ref: "#/components/responses/RateLimited"
         "503":
           $ref: "#/components/responses/AuthUnavailable"
+  /api/v1/lb/pools:
+    get:
+      summary: 获取流量池列表
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LBPoolListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "503":
+          $ref: "#/components/responses/AuthUnavailable"
+    post:
+      summary: 创建流量池
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LBPool"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: created
+                  id:
+                    type: string
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "503":
+          $ref: "#/components/responses/AuthUnavailable"
+  /api/v1/lb/pools/{pool_id}:
+    parameters:
+      - in: path
+        name: pool_id
+        schema:
+          type: string
+        required: true
+    get:
+      summary: 获取流量池详情
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LBPool"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/BadRequest"
+        "503":
+          $ref: "#/components/responses/AuthUnavailable"
+    put:
+      summary: 更新流量池
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LBPool"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: updated
+                  pool_id:
+                    type: string
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/BadRequest"
+        "503":
+          $ref: "#/components/responses/AuthUnavailable"
+    delete:
+      summary: 删除流量池
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: deleted
+                  pool_id:
+                    type: string
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/BadRequest"
+        "503":
+          $ref: "#/components/responses/AuthUnavailable"
+  /api/v1/lb/routes:
+    get:
+      summary: 获取域名绑定规则列表
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LBRouteListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "503":
+          $ref: "#/components/responses/AuthUnavailable"
+  /api/v1/lb/routes/{domain}:
+    parameters:
+      - in: path
+        name: domain
+        schema:
+          type: string
+        required: true
+    get:
+      summary: 获取域名绑定规则详情
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LBRouteRule"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/BadRequest"
+        "503":
+          $ref: "#/components/responses/AuthUnavailable"
+    put:
+      summary: 新增或更新域名绑定规则
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LBRouteRule"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: updated
+                  domain:
+                    type: string
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "503":
+          $ref: "#/components/responses/AuthUnavailable"
+    delete:
+      summary: 删除域名绑定规则
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: deleted
+                  domain:
+                    type: string
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/BadRequest"
+        "503":
+          $ref: "#/components/responses/AuthUnavailable"
   /api/v1/site-groups:
     get:
       summary: 按 hostname 或 IP 分类站点
@@ -1445,6 +1642,8 @@ components:
           $ref: "#/components/schemas/SecurityConfig"
         routing:
           $ref: "#/components/schemas/RoutingConfig"
+        loadBalancer:
+          $ref: "#/components/schemas/LoadBalancerConfig"
         cdnSync:
           $ref: "#/components/schemas/CDNSyncConfig"
         certificates:
@@ -1567,6 +1766,72 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/DomainRule"
+    LoadBalancerConfig:
+      type: object
+      properties:
+        defaultPoolId:
+          type: string
+        pools:
+          type: array
+          items:
+            $ref: "#/components/schemas/LBPool"
+        routes:
+          type: array
+          items:
+            $ref: "#/components/schemas/LBRouteRule"
+    LBPoolListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/LBPool"
+    LBRouteListResponse:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/LBRouteRule"
+        default_pool_id:
+          type: string
+    LBPool:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        strategy:
+          type: string
+          example: weighted_rr
+        nodes:
+          type: array
+          items:
+            $ref: "#/components/schemas/LBNode"
+    LBNode:
+      type: object
+      properties:
+        id:
+          type: string
+        upstream:
+          type: string
+        weight:
+          type: integer
+          format: int32
+        enabled:
+          type: boolean
+    LBRouteRule:
+      type: object
+      properties:
+        domain:
+          type: string
+        poolId:
+          type: string
+        fallbackPoolId:
+          type: string
+        forceHttps:
+          type: boolean
     DomainRule:
       type: object
       properties:

@@ -34,6 +34,33 @@ export type RoutingConfig = {
   domains?: DomainRule[]
 }
 
+export type LBNode = {
+  id?: string
+  upstream?: string
+  weight?: number
+  enabled?: boolean
+}
+
+export type LBPool = {
+  id?: string
+  name?: string
+  strategy?: string
+  nodes?: LBNode[]
+}
+
+export type LBRouteRule = {
+  domain?: string
+  poolId?: string
+  fallbackPoolId?: string
+  forceHttps?: boolean
+}
+
+export type LoadBalancerConfig = {
+  defaultPoolId?: string
+  pools?: LBPool[]
+  routes?: LBRouteRule[]
+}
+
 export type CDNProviderSetting = {
   apiKey?: string
   secretKey?: string
@@ -104,6 +131,7 @@ export type Config = {
   }
   security?: SecurityConfig
   routing?: RoutingConfig
+  loadBalancer?: LoadBalancerConfig
   rateLimit?: RateLimitConfig
   certificates?: Certificate[]
   sslCertificates?: SSLCertificate[]

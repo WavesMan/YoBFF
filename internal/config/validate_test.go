@@ -109,6 +109,35 @@ func TestValidateConfig_Issues(t *testing.T) {
 			},
 			wantKey: "certificates[0].keyPem",
 		},
+		{
+			name: "lb pool node upstream invalid",
+			cfg: Config{
+				LoadBalancer: LoadBalancerConfig{
+					Pools: []LBPool{
+						{
+							ID:       "pool_main",
+							Name:     "主池",
+							Strategy: "weighted_rr",
+							Nodes: []LBNode{
+								{ID: "n1", Upstream: "://bad", Weight: 1, Enabled: true},
+							},
+						},
+					},
+				},
+			},
+			wantKey: "loadBalancer.pools[0].nodes[0].upstream",
+		},
+		{
+			name: "lb route pool not found",
+			cfg: Config{
+				LoadBalancer: LoadBalancerConfig{
+					Routes: []LBRouteRule{
+						{Domain: "a.example.com", PoolID: "pool_missing"},
+					},
+				},
+			},
+			wantKey: "loadBalancer.routes[0].poolId",
+		},
 	}
 	for _, tt := range cases {
 		t.Run(tt.name, func(t *testing.T) {
