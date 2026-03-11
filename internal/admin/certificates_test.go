@@ -171,6 +171,43 @@ func TestCertificateRoutes_UploadListDelete(t *testing.T) {
 	}
 }
 
+func TestCertificateRoutes_UploadDERCertificate(t *testing.T) {
+	handler := buildCertHandler(t)
+	certPEM, keyPEM := buildCertificatePEM(t)
+	block, _ := pem.Decode(certPEM)
+	if block == nil {
+		t.Fatalf("证书 PEM 解码失败")
+	}
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	if err := writer.WriteField("name", "cert-der"); err != nil {
+		t.Fatalf("写入字段失败: %v", err)
+	}
+	certPart, err := writer.CreateFormFile("cert", "cert.cer")
+	if err != nil {
+		t.Fatalf("创建证书文件失败: %v", err)
+	}
+	if _, err = certPart.Write(block.Bytes); err != nil {
+		t.Fatalf("写入证书内容失败: %v", err)
+	}
+	keyPart, err := writer.CreateFormFile("key", "key.pem")
+	if err != nil {
+		t.Fatalf("创建私钥文件失败: %v", err)
+	}
+	if _, err = keyPart.Write(keyPEM); err != nil {
+		t.Fatalf("写入私钥内容失败: %v", err)
+	}
+	if err = writer.Close(); err != nil {
+		t.Fatalf("关闭上传体失败: %v", err)
+	}
+
+	uploadRec := requestAuthJSON(t, handler, http.MethodPost, "/api/v1/certs", writer.FormDataContentType(), body.Bytes())
+	if uploadRec.Result().StatusCode != http.StatusOK {
+		t.Fatalf("上传 DER 证书状态码不匹配: got=%d body=%s", uploadRec.Result().StatusCode, uploadRec.Body.String())
+	}
+}
+
 func TestCertificateRoutes_ErrorsAndParser(t *testing.T) {
 	handler := buildCertHandler(t)
 

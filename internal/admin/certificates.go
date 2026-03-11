@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
@@ -144,12 +145,30 @@ func (s *Server) uploadCertificate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 解析证书信息
-	domains, notAfter, issuer, err := parseCertInfo(certBytes)
+	certPEM, parsedCert, err := normalizeCertificateBytes(certBytes)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_certificate", fmt.Sprintf("invalid certificate: %v", err), r)
+		message := fmt.Sprintf("invalid certificate: %v", err)
+		if strings.Contains(err.Error(), "failed to decode PEM block") {
+			message = "invalid certificate: 证书文件格式不正确，请上传 PEM/DER 编码的 .pem/.crt/.cer"
+		}
+		writeError(w, http.StatusBadRequest, "invalid_certificate", message, r)
 		return
 	}
+	keyPEM, err := normalizePrivateKeyBytes(keyBytes)
+	if err != nil {
+		message := fmt.Sprintf("invalid private key: %v", err)
+		if strings.Contains(err.Error(), "failed to decode PEM block") {
+			message = "invalid private key: 私钥文件格式不正确，请上传 PEM/DER 编码的 .key/.pem"
+		}
+		writeError(w, http.StatusBadRequest, "invalid_certificate", message, r)
+		return
+	}
+	if _, err := tls.X509KeyPair(certPEM, keyPEM); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_certificate", fmt.Sprintf("invalid certificate: 证书与私钥不匹配或格式不正确: %v", err), r)
+		return
+	}
+
+	domains, notAfter, issuer := extractCertInfo(parsedCert)
 
 	cert := &config.SSLCertificate{
 		ID:        fmt.Sprintf("cert_%d", time.Now().UnixNano()),
@@ -157,8 +176,8 @@ func (s *Server) uploadCertificate(w http.ResponseWriter, r *http.Request) {
 		Domains:   domains,
 		NotAfter:  notAfter,
 		Issuer:    issuer,
-		CertPEM:   string(certBytes),
-		KeyPEM:    string(keyBytes),
+		CertPEM:   string(certPEM),
+		KeyPEM:    string(keyPEM),
 		CreatedAt: time.Now(),
 	}
 
@@ -183,29 +202,89 @@ func (s *Server) deleteCertificate(w http.ResponseWriter, r *http.Request, id st
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// parseCertInfo 解析 PEM 格式证书，提取域名、有效期和颁发者。
-func parseCertInfo(certPEM []byte) (domains []string, notAfter time.Time, issuer string, err error) {
-	block, _ := pem.Decode(certPEM)
-	if block == nil {
-		return nil, time.Time{}, "", fmt.Errorf("failed to decode PEM block")
+// normalizeCertificateBytes 将证书输入转换为可用于 TLS 解析的 PEM 字节并返回首张证书对象。
+// 参数：raw 为证书文件字节，支持 PEM/DER 编码。
+// 返回：规范化后的证书 PEM、首张证书对象。
+// 异常：格式非法时返回错误。
+func normalizeCertificateBytes(raw []byte) ([]byte, *x509.Certificate, error) {
+	rest := raw
+	var pemCert []byte
+	var firstCert *x509.Certificate
+	for len(rest) > 0 {
+		block, next := pem.Decode(rest)
+		if block == nil {
+			break
+		}
+		rest = next
+		if block.Type != "CERTIFICATE" {
+			continue
+		}
+		pemCert = append(pemCert, pem.EncodeToMemory(block)...)
+		if firstCert == nil {
+			cert, err := x509.ParseCertificate(block.Bytes)
+			if err != nil {
+				return nil, nil, err
+			}
+			firstCert = cert
+		}
+	}
+	if len(pemCert) > 0 && firstCert != nil {
+		return pemCert, firstCert, nil
 	}
 
-	cert, err := x509.ParseCertificate(block.Bytes)
+	cert, err := x509.ParseCertificate(raw)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to decode PEM block")
+	}
+	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Raw}), cert, nil
+}
+
+// normalizePrivateKeyBytes 将私钥输入转换为可用于 TLS 解析的 PEM 字节。
+// 参数：raw 为私钥文件字节，支持 PEM/DER 编码。
+// 返回：规范化后的私钥 PEM。
+// 异常：格式非法时返回错误。
+func normalizePrivateKeyBytes(raw []byte) ([]byte, error) {
+	block, _ := pem.Decode(raw)
+	if block != nil {
+		return pem.EncodeToMemory(block), nil
+	}
+
+	if _, err := x509.ParsePKCS8PrivateKey(raw); err == nil {
+		return pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: raw}), nil
+	}
+	if _, err := x509.ParseECPrivateKey(raw); err == nil {
+		return pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: raw}), nil
+	}
+	if _, err := x509.ParsePKCS1PrivateKey(raw); err == nil {
+		return pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: raw}), nil
+	}
+	return nil, fmt.Errorf("failed to decode PEM block")
+}
+
+func extractCertInfo(cert *x509.Certificate) (domains []string, notAfter time.Time, issuer string) {
+	domains = append(domains, cert.Subject.CommonName)
+	domains = append(domains, cert.DNSNames...)
+	unique := make(map[string]bool)
+	cleanDomains := make([]string, 0, len(domains))
+	for _, domain := range domains {
+		value := strings.TrimSpace(domain)
+		if value == "" {
+			continue
+		}
+		if unique[value] {
+			continue
+		}
+		unique[value] = true
+		cleanDomains = append(cleanDomains, value)
+	}
+	return cleanDomains, cert.NotAfter, cert.Issuer.CommonName
+}
+
+func parseCertInfo(certRaw []byte) (domains []string, notAfter time.Time, issuer string, err error) {
+	_, cert, err := normalizeCertificateBytes(certRaw)
 	if err != nil {
 		return nil, time.Time{}, "", err
 	}
-
-	domains = append(domains, cert.Subject.CommonName)
-	domains = append(domains, cert.DNSNames...)
-	// 去重
-	unique := make(map[string]bool)
-	var cleanDomains []string
-	for _, d := range domains {
-		if d != "" && !unique[d] {
-			unique[d] = true
-			cleanDomains = append(cleanDomains, d)
-		}
-	}
-
-	return cleanDomains, cert.NotAfter, cert.Issuer.CommonName, nil
+	domains, notAfter, issuer = extractCertInfo(cert)
+	return domains, notAfter, issuer, nil
 }

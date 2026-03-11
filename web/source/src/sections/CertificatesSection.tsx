@@ -28,6 +28,9 @@ export function CertificatesSection({ token }: CertificatesSectionProps) {
   const [certFile, setCertFile] = useState<File | null>(null)
   const [keyFile, setKeyFile] = useState<File | null>(null)
   const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState('')
+  const [deleteTarget, setDeleteTarget] = useState<SSLCertificate | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   const loadCertificates = useCallback(async () => {
     setLoading(true)
@@ -47,21 +50,53 @@ export function CertificatesSection({ token }: CertificatesSectionProps) {
     loadCertificates()
   }, [loadCertificates])
 
-  const handleDelete = async (id: string) => {
-    if (!confirm('确定要删除此证书吗？这将影响所有使用此证书的站点。')) return
-    
+  // openDeleteDialog 打开删除确认弹窗。
+  // 参数：cert 为待删除证书对象。
+  // 返回：无。
+  // 异常：无。
+  const openDeleteDialog = (cert: SSLCertificate) => {
+    if (deleting) return
+    setError('')
+    setDeleteTarget(cert)
+  }
+
+  // confirmDeleteCertificate 执行证书删除并刷新列表。
+  // 参数：无。
+  // 返回：无。
+  // 异常：请求失败时写入错误提示。
+  const confirmDeleteCertificate = async () => {
+    if (!deleteTarget) return
+    setDeleting(true)
+    setError('')
     try {
-      await deleteCertificate(token, id)
+      await deleteCertificate(token, deleteTarget.id)
+      setDeleteTarget(null)
       loadCertificates()
     } catch (err) {
-      alert(err instanceof Error ? err.message : '删除失败')
+      setError(err instanceof Error ? err.message : '删除证书失败')
+    } finally {
+      setDeleting(false)
     }
+  }
+
+  // closeUploadDialog 关闭上传弹窗并清理表单状态。
+  // 参数：无。
+  // 返回：无。
+  // 异常：无。
+  const closeUploadDialog = () => {
+    if (uploading) return
+    setShowUpload(false)
+    setUploadError('')
+    setUploadName('')
+    setCertFile(null)
+    setKeyFile(null)
   }
 
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault()
+    setUploadError('')
     if (!uploadName || !certFile || !keyFile) {
-      alert('请完整填写信息')
+      setUploadError('请完整填写信息')
       return
     }
 
@@ -73,13 +108,10 @@ export function CertificatesSection({ token }: CertificatesSectionProps) {
 
     try {
       await uploadCertificate(token, formData)
-      setShowUpload(false)
-      setUploadName('')
-      setCertFile(null)
-      setKeyFile(null)
+      closeUploadDialog()
       loadCertificates()
     } catch (err) {
-      alert(err instanceof Error ? err.message : '上传失败')
+      setUploadError(err instanceof Error ? err.message : '上传失败')
     } finally {
       setUploading(false)
     }
@@ -163,7 +195,7 @@ export function CertificatesSection({ token }: CertificatesSectionProps) {
                       <td style={{ textAlign: 'right' }}>
                         <button 
                           className="button small danger"
-                          onClick={() => handleDelete(cert.id)}
+                          onClick={() => openDeleteDialog(cert)}
                           title="删除证书"
                         >
                           <FiTrash2 />
@@ -199,71 +231,89 @@ export function CertificatesSection({ token }: CertificatesSectionProps) {
       )}
 
       {showUpload && (
-        <div className="modal-overlay" onClick={() => setShowUpload(false)}>
-          <div className="modal-content" style={{ maxWidth: '500px' }} onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h4>上传新证书</h4>
-              <button className="icon-btn" onClick={() => setShowUpload(false)}>
-                <svg stroke="currentColor" fill="none" strokeWidth="2" viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round" height="1em" width="1em" xmlns="http://www.w3.org/2000/svg">
-                  <line x1="18" y1="6" x2="6" y2="18"></line>
-                  <line x1="6" y1="6" x2="18" y2="18"></line>
-                </svg>
-              </button>
-            </div>
-            <div className="modal-body">
-              <form onSubmit={handleUpload} style={{ display: 'grid', gap: '15px' }}>
-                <div className="form-field">
-                  <label>备注名称</label>
+        <div className="confirm-overlay" onClick={closeUploadDialog}>
+          <div className="confirm-dialog" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+            <div className="confirm-title">上传证书</div>
+            <div className="confirm-message">填写证书信息后点击“确认上传”。</div>
+            <form onSubmit={handleUpload} style={{ display: 'grid', gap: '15px' }}>
+              <div className="form-field">
+                <label>备注名称</label>
+                <input
+                  type="text"
+                  value={uploadName}
+                  onChange={e => setUploadName(e.target.value)}
+                  placeholder="例如：example.com 2025"
+                  className="input"
+                  autoFocus
+                  disabled={uploading}
+                />
+              </div>
+              <div className="form-field">
+                <label>证书文件 (.pem/.crt/.cer)</label>
+                <div className="file-input-wrapper">
                   <input
-                    type="text"
-                    value={uploadName}
-                    onChange={e => setUploadName(e.target.value)}
-                    placeholder="例如：example.com 2025"
-                    className="input"
-                    autoFocus
+                    type="file"
+                    id="cert-file"
+                    accept=".pem,.crt,.cer"
+                    onChange={e => setCertFile(e.target.files?.[0] || null)}
+                    className="hidden-file-input"
+                    disabled={uploading}
                   />
+                  <label htmlFor="cert-file" className="file-input-label">
+                    <FiFile />
+                    {certFile ? certFile.name : '选择证书文件...'}
+                  </label>
                 </div>
-                <div className="form-field">
-                  <label>证书文件 (.pem/.crt)</label>
-                  <div className="file-input-wrapper">
-                    <input
-                      type="file"
-                      id="cert-file"
-                      accept=".pem,.crt,.cer"
-                      onChange={e => setCertFile(e.target.files?.[0] || null)}
-                      className="hidden-file-input"
-                    />
-                    <label htmlFor="cert-file" className="file-input-label">
-                      <FiFile />
-                      {certFile ? certFile.name : '选择证书文件...'}
-                    </label>
-                  </div>
+              </div>
+              <div className="form-field">
+                <label>私钥文件 (.key/.pem)</label>
+                <div className="file-input-wrapper">
+                  <input
+                    type="file"
+                    id="key-file"
+                    accept=".key,.pem"
+                    onChange={e => setKeyFile(e.target.files?.[0] || null)}
+                    className="hidden-file-input"
+                    disabled={uploading}
+                  />
+                  <label htmlFor="key-file" className="file-input-label">
+                    <FiFile />
+                    {keyFile ? keyFile.name : '选择私钥文件...'}
+                  </label>
                 </div>
-                <div className="form-field">
-                  <label>私钥文件 (.key/.pem)</label>
-                  <div className="file-input-wrapper">
-                    <input
-                      type="file"
-                      id="key-file"
-                      accept=".key,.pem"
-                      onChange={e => setKeyFile(e.target.files?.[0] || null)}
-                      className="hidden-file-input"
-                    />
-                    <label htmlFor="key-file" className="file-input-label">
-                      <FiFile />
-                      {keyFile ? keyFile.name : '选择私钥文件...'}
-                    </label>
-                  </div>
+              </div>
+              {uploadError && (
+                <div className="error-message" style={{ padding: 10, borderRadius: 6 }}>
+                  {uploadError}
                 </div>
-                <div className="form-actions" style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
-                  <button type="button" className="button ghost" onClick={() => setShowUpload(false)}>
-                    取消
-                  </button>
-                  <button type="submit" className="button primary" disabled={uploading}>
-                    {uploading ? '上传中...' : '确认上传'}
-                  </button>
-                </div>
-              </form>
+              )}
+              <div className="confirm-actions">
+                <button type="button" className="button secondary" onClick={closeUploadDialog} disabled={uploading}>
+                  取消
+                </button>
+                <button type="submit" className="button primary" disabled={uploading}>
+                  {uploading ? '上传中...' : '确认上传'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {deleteTarget && (
+        <div className="confirm-overlay" onClick={() => !deleting && setDeleteTarget(null)}>
+          <div className="confirm-dialog" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
+            <div className="confirm-title">确认删除</div>
+            <div className="confirm-message">
+              确定要删除证书「{deleteTarget.name}」吗？此操作不可恢复，且将影响所有使用此证书的站点。
+            </div>
+            <div className="confirm-actions">
+              <button className="button secondary" onClick={() => setDeleteTarget(null)} disabled={deleting}>
+                取消
+              </button>
+              <button className="button danger" onClick={confirmDeleteCertificate} disabled={deleting}>
+                {deleting ? '删除中...' : '确定删除'}
+              </button>
             </div>
           </div>
         </div>
@@ -333,40 +383,6 @@ export function CertificatesSection({ token }: CertificatesSectionProps) {
           color: var(--border);
         }
         
-        /* Modal Styles */
-        .modal-overlay {
-          position: fixed;
-          top: 0;
-          left: 0;
-          width: 100%;
-          height: 100%;
-          background: rgba(0, 0, 0, 0.5);
-          z-index: 1000;
-          display: flex;
-          justify-content: center;
-          align-items: center;
-        }
-        .modal-content {
-          background: var(--bg-surface);
-          border-radius: 8px;
-          width: 90%;
-          box-shadow: 0 4px 20px rgba(0,0,0,0.15);
-          overflow: hidden;
-        }
-        .modal-header {
-          padding: 15px 20px;
-          border-bottom: 1px solid var(--border);
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-        }
-        .modal-header h4 {
-          margin: 0;
-          font-size: 16px;
-        }
-        .modal-body {
-          padding: 20px;
-        }
         .file-input-wrapper {
           position: relative;
         }
@@ -395,21 +411,6 @@ export function CertificatesSection({ token }: CertificatesSectionProps) {
           border-color: var(--primary);
           color: var(--primary);
           background: var(--bg-hover);
-        }
-        .icon-btn {
-          background: none;
-          border: none;
-          color: var(--text-sub);
-          cursor: pointer;
-          font-size: 20px;
-          padding: 5px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          transition: color 0.2s;
-        }
-        .icon-btn:hover {
-          color: var(--text-main);
         }
       `}</style>
     </div>

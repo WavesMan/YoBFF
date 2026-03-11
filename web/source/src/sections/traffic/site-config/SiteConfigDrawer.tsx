@@ -73,6 +73,10 @@ export function SiteConfigDrawer({ token, operator, siteId, onClose }: SiteConfi
   const [updatingSite, setUpdatingSite] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+  const [deleteVersionTarget, setDeleteVersionTarget] = useState<{ id: string; shortID: string } | null>(null)
+  const [deletingVersion, setDeletingVersion] = useState(false)
+  const [rollbackVersionTarget, setRollbackVersionTarget] = useState<{ id: string; shortID: string } | null>(null)
+  const [rollingBackVersion, setRollingBackVersion] = useState(false)
 
   const [newPool, setNewPool] = useState<LBPool>({
     id: '',
@@ -337,36 +341,64 @@ export function SiteConfigDrawer({ token, operator, siteId, onClose }: SiteConfi
     }
   }
 
+  // handleRollback 打开回滚确认弹窗，等待用户确认后再执行回滚。
+  // 参数：versionId 为目标版本标识。
+  // 返回：无。
+  // 异常：无。
   const handleRollback = async (versionId: string) => {
-    if (!window.confirm('确认回滚到此版本吗？当前未保存的更改将丢失。')) return
-    
+    setRollbackVersionTarget({ id: versionId, shortID: versionId.substring(0, 8) })
+  }
+
+  // confirmRollbackVersion 执行回滚并刷新配置与版本列表。
+  // 参数：无。
+  // 返回：无。
+  // 异常：请求失败时写入错误提示。
+  const confirmRollbackVersion = async () => {
+    if (!rollbackVersionTarget) return
+    setRollingBackVersion(true)
     setLoading(true)
+    setError('')
+    setSuccess('')
     try {
-      await rollbackSiteConfig(token, siteId, versionId, operator)
+      await rollbackSiteConfig(token, siteId, rollbackVersionTarget.id, operator)
       await loadConfig()
-      setSuccess(`已回滚到版本 ${versionId}`)
+      setSuccess(`已回滚到版本 ${rollbackVersionTarget.id}`)
+      setRollbackVersionTarget(null)
       loadVersions()
     } catch (err) {
       setError(err instanceof Error ? err.message : '回滚失败')
     } finally {
       setLoading(false)
+      setRollingBackVersion(false)
     }
   }
 
+  // handleDeleteVersion 打开删除确认弹窗，等待用户二次确认后再执行。
+  // 参数：versionId 为待删除版本标识。
+  // 返回：无。
+  // 异常：无。
   const handleDeleteVersion = async (versionId: string) => {
-    const firstConfirm = window.confirm(`确认删除版本 ${versionId.substring(0, 8)} 吗？`)
-    if (!firstConfirm) return
-    const secondConfirm = window.confirm('二次确认：删除后不可恢复，是否继续？')
-    if (!secondConfirm) return
-    setLoading(true)
+    setDeleteVersionTarget({ id: versionId, shortID: versionId.substring(0, 8) })
+  }
+
+  // confirmDeleteVersion 执行历史版本删除并刷新列表。
+  // 参数：无。
+  // 返回：无。
+  // 异常：请求失败时写入错误提示。
+  const confirmDeleteVersion = async () => {
+    if (!deleteVersionTarget) return
+    setDeletingVersion(true)
+    setError('')
+    setSuccess('')
     try {
-      await deleteSiteVersion(token, siteId, versionId)
-      setSuccess(`已删除版本 ${versionId}`)
+      await deleteSiteVersion(token, siteId, deleteVersionTarget.id)
+      setSuccess(`已删除版本 ${deleteVersionTarget.id}`)
+      setDeleteVersionTarget(null)
       loadVersions()
     } catch (err) {
       setError(err instanceof Error ? err.message : '删除版本失败')
     } finally {
-      setLoading(false)
+      setDeletingVersion(false)
     }
   }
   
@@ -635,6 +667,74 @@ export function SiteConfigDrawer({ token, operator, siteId, onClose }: SiteConfi
         </div>
       </div>
       </div>
+      {deleteVersionTarget && (
+        <div
+          className="confirm-overlay"
+          onClick={() => !deletingVersion && setDeleteVersionTarget(null)}
+        >
+          <div
+            className="confirm-dialog"
+            role="dialog"
+            aria-modal="true"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="confirm-title">确认删除</div>
+            <div className="confirm-message">
+              确定要删除版本「{deleteVersionTarget.shortID}」吗？此操作不可恢复。
+            </div>
+            <div className="confirm-actions">
+              <button
+                className="button secondary"
+                onClick={() => setDeleteVersionTarget(null)}
+                disabled={deletingVersion}
+              >
+                取消
+              </button>
+              <button
+                className="button danger"
+                onClick={confirmDeleteVersion}
+                disabled={deletingVersion}
+              >
+                {deletingVersion ? '删除中...' : '确定删除'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {rollbackVersionTarget && (
+        <div
+          className="confirm-overlay"
+          onClick={() => !rollingBackVersion && setRollbackVersionTarget(null)}
+        >
+          <div
+            className="confirm-dialog"
+            role="dialog"
+            aria-modal="true"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="confirm-title">确认回滚</div>
+            <div className="confirm-message">
+              确定要回滚到版本「{rollbackVersionTarget.shortID}」吗？当前未保存的更改将丢失。
+            </div>
+            <div className="confirm-actions">
+              <button
+                className="button secondary"
+                onClick={() => setRollbackVersionTarget(null)}
+                disabled={rollingBackVersion}
+              >
+                取消
+              </button>
+              <button
+                className="button danger"
+                onClick={confirmRollbackVersion}
+                disabled={rollingBackVersion}
+              >
+                {rollingBackVersion ? '回滚中...' : '确定回滚'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   )
 }
