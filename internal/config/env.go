@@ -81,7 +81,13 @@ func ApplyEnvOverrides(cfg Config) Config {
 	cfg.ControlPlane.Auth.Token = EnvOrDefault("ADMIN_API_TOKEN", cfg.ControlPlane.Auth.Token)
 	cfg.Security.BlockPageHTML = EnvOrDefault("BLOCK_PAGE_HTML", cfg.Security.BlockPageHTML)
 	cfg.Security.EnableHSTS = envBoolValue("HSTS_ENABLED", cfg.Security.EnableHSTS)
-	cfg.Routing.DefaultUpstream = EnvOrDefault("DEFAULT_UPSTREAM", cfg.Routing.DefaultUpstream)
+	defaultUpstreamEnv := strings.TrimSpace(os.Getenv("DEFAULT_UPSTREAM"))
+	if defaultUpstreamEnv != "" {
+		cfg.Routing.DefaultUpstream = defaultUpstreamEnv
+		cfg.LoadBalancer.DefaultPoolID = ""
+	} else {
+		cfg.Routing.DefaultUpstream = EnvOrDefault("DEFAULT_UPSTREAM", cfg.Routing.DefaultUpstream)
+	}
 
 	allowedCIDRs := strings.TrimSpace(os.Getenv("ALLOWED_CIDRS"))
 	if allowedCIDRs != "" {

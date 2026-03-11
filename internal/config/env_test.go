@@ -122,3 +122,19 @@ func TestApplyEnvOverrides_BoolParsing(t *testing.T) {
 		t.Fatalf("HSTS_ENABLED 非法值应回退: got=false")
 	}
 }
+
+func TestApplyEnvOverrides_DefaultUpstreamClearsLoadBalancerDefaultPool(t *testing.T) {
+	t.Setenv("DEFAULT_UPSTREAM", "http://127.0.0.1:19090")
+	cfg := defaultConfig()
+	cfg.Routing.DefaultUpstream = ""
+	cfg.LoadBalancer.DefaultPoolID = "pool_main"
+
+	next := ApplyEnvOverrides(cfg)
+
+	if next.Routing.DefaultUpstream != "http://127.0.0.1:19090" {
+		t.Fatalf("DEFAULT_UPSTREAM 未生效: got=%q", next.Routing.DefaultUpstream)
+	}
+	if next.LoadBalancer.DefaultPoolID != "" {
+		t.Fatalf("存在 DEFAULT_UPSTREAM 时应清空默认流量池: got=%q", next.LoadBalancer.DefaultPoolID)
+	}
+}
