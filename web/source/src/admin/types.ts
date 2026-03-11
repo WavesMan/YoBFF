@@ -69,6 +69,7 @@ export type CDNProviderSetting = {
 
 export type SecurityConfig = {
   allowedCidrs?: string[]
+  trustedProxyCidrs?: string[]
   allowedCdnProviders?: string[]
   cdnProviderSettings?: Record<string, CDNProviderSetting>
   blockPageHtml?: string

@@ -44,7 +44,6 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	reqID := uuid.New().String()
 	w.Header().Set("X-Request-ID", reqID)
 
-	clientIP := parseClientIP(r.RemoteAddr)
 	host := normalizeHost(r.Host)
 	siteID := ""
 	if h.store != nil {
@@ -81,6 +80,16 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			siteCfg = sc
 			useSiteConfig = true
 		}
+	}
+	currentCfg := h.manager.CurrentConfig()
+	trustedProxyCIDRs := currentCfg.Security.TrustedProxyCIDRs
+	if useSiteConfig && len(siteCfg.Security.TrustedProxyCIDRs) > 0 {
+		trustedProxyCIDRs = siteCfg.Security.TrustedProxyCIDRs
+	}
+	clientIP := parseClientIP(r, trustedProxyCIDRs)
+	peerIP := parseIPToken(r.RemoteAddr)
+	if peerIP == netip.IPv4Unspecified() {
+		peerIP = clientIP
 	}
 
 	// 2. 执行 IP 访问控制
@@ -209,7 +218,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		req.Host = r.Host
 		req.Header.Set("X-Real-IP", clientIP.String())
 		req.Header.Set("X-Request-ID", reqID)
-		appendXForwardedFor(req.Header, clientIP.String())
+		appendXForwardedFor(req.Header, peerIP.String())
 		if r.TLS != nil {
 			req.Header.Set("X-Forwarded-Proto", "https")
 		} else {
@@ -248,20 +257,79 @@ func appendXForwardedFor(header http.Header, ip string) {
 	header.Set("X-Forwarded-For", original+", "+ip)
 }
 
-// parseClientIP 从 RemoteAddr 中解析客户端 IP。
-// 参数：remoteAddr 为连接地址字符串。
+// parseClientIP 按受信代理链策略解析客户端 IP。
+// 参数：r 为当前请求对象，trustedProxyCIDRs 为受信代理网段列表。
 // 返回：解析后的 IP，失败时返回 0.0.0.0。
 // 异常：无。
-func parseClientIP(remoteAddr string) netip.Addr {
-	host, _, err := net.SplitHostPort(strings.TrimSpace(remoteAddr))
-	if err != nil {
-		host = remoteAddr
+func parseClientIP(r *http.Request, trustedProxyCIDRs []string) netip.Addr {
+	remoteIP := parseIPToken(r.RemoteAddr)
+	if remoteIP == netip.IPv4Unspecified() {
+		return remoteIP
 	}
-	ip, parseErr := netip.ParseAddr(host)
-	if parseErr != nil {
+	if !isTrustedProxyIP(remoteIP, trustedProxyCIDRs) {
+		return remoteIP
+	}
+	xffIPs := parseForwardedForIPs(r.Header.Get("X-Forwarded-For"))
+	if len(xffIPs) > 0 {
+		for idx := len(xffIPs) - 1; idx >= 0; idx-- {
+			if !isTrustedProxyIP(xffIPs[idx], trustedProxyCIDRs) {
+				return xffIPs[idx]
+			}
+		}
+		return xffIPs[0]
+	}
+	realIP := parseIPToken(r.Header.Get("X-Real-IP"))
+	if realIP != netip.IPv4Unspecified() {
+		return realIP
+	}
+	return remoteIP
+}
+
+func parseForwardedForIPs(raw string) []netip.Addr {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	ips := make([]netip.Addr, 0, len(parts))
+	for _, part := range parts {
+		ip := parseIPToken(part)
+		if ip == netip.IPv4Unspecified() {
+			continue
+		}
+		ips = append(ips, ip)
+	}
+	return ips
+}
+
+func isTrustedProxyIP(ip netip.Addr, trustedProxyCIDRs []string) bool {
+	for _, cidr := range trustedProxyCIDRs {
+		prefix, err := netip.ParsePrefix(strings.TrimSpace(cidr))
+		if err != nil {
+			continue
+		}
+		if prefix.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
+func parseIPToken(raw string) netip.Addr {
+	value := strings.TrimSpace(raw)
+	if value == "" {
 		return netip.IPv4Unspecified()
 	}
-	return ip.Unmap()
+	if ip, err := netip.ParseAddr(value); err == nil {
+		return ip.Unmap()
+	}
+	host, _, err := net.SplitHostPort(value)
+	if err != nil {
+		return netip.IPv4Unspecified()
+	}
+	if ip, parseErr := netip.ParseAddr(strings.TrimSpace(host)); parseErr == nil {
+		return ip.Unmap()
+	}
+	return netip.IPv4Unspecified()
 }
 
 // normalizeHost 将 Host 规范化为小写且不含端口的形式。

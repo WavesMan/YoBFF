@@ -317,16 +317,32 @@ func TestHandler_UpstreamErrorReturns502(t *testing.T) {
 	}
 }
 
-// TestParseClientIP_CoversBranches 验证 RemoteAddr 解析分支与失败兜底。
+// TestParseClientIP_CoversBranches 验证受信代理链与兜底解析行为。
 func TestParseClientIP_CoversBranches(t *testing.T) {
-	if got := parseClientIP("10.0.0.1:1234"); got != netip.MustParseAddr("10.0.0.1") {
+	req := httptest.NewRequest(http.MethodGet, "http://example.local", nil)
+	req.RemoteAddr = "10.0.0.1:1234"
+	if got := parseClientIP(req, nil); got != netip.MustParseAddr("10.0.0.1") {
 		t.Fatalf("解析结果不匹配: got=%s", got)
 	}
-	if got := parseClientIP("10.0.0.1"); got != netip.MustParseAddr("10.0.0.1") {
+	req.RemoteAddr = "10.0.0.1"
+	if got := parseClientIP(req, nil); got != netip.MustParseAddr("10.0.0.1") {
 		t.Fatalf("解析结果不匹配: got=%s", got)
 	}
-	if got := parseClientIP("not-an-ip"); got != netip.IPv4Unspecified() {
+	req.RemoteAddr = "not-an-ip"
+	if got := parseClientIP(req, nil); got != netip.IPv4Unspecified() {
 		t.Fatalf("解析结果不匹配: got=%s", got)
+	}
+
+	req.RemoteAddr = "172.16.0.10:3456"
+	req.Header.Set("X-Forwarded-For", "203.0.113.1, 172.16.0.5")
+	if got := parseClientIP(req, []string{"172.16.0.0/16"}); got != netip.MustParseAddr("203.0.113.1") {
+		t.Fatalf("受信代理解析结果不匹配: got=%s", got)
+	}
+
+	req.RemoteAddr = "203.0.113.9:3456"
+	req.Header.Set("X-Forwarded-For", "198.51.100.2")
+	if got := parseClientIP(req, []string{"172.16.0.0/16"}); got != netip.MustParseAddr("203.0.113.9") {
+		t.Fatalf("非受信代理应回退 RemoteAddr: got=%s", got)
 	}
 }
 

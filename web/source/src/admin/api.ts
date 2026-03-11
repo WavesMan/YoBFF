@@ -34,7 +34,7 @@ async function apiRequest<T>(
   token?: string | null,
 ) {
   const headers = new Headers(options.headers)
-  if (!headers.has('Content-Type') && options.body) {
+  if (!headers.has('Content-Type') && options.body && !(options.body instanceof FormData)) {
     headers.set('Content-Type', 'application/json')
   }
   if (token) {
@@ -78,6 +78,7 @@ export function normalizeConfig(config?: Config | null): Config {
     },
     security: {
       allowedCidrs: config?.security?.allowedCidrs ?? [],
+      trustedProxyCidrs: config?.security?.trustedProxyCidrs ?? [],
       blockPageHtml: config?.security?.blockPageHtml ?? '',
       enableHsts: config?.security?.enableHsts ?? false,
     },
@@ -122,21 +123,10 @@ export async function uploadCertificate(
   token: string,
   formData: FormData
 ) {
-  const headers = new Headers()
-  headers.set('Authorization', `Bearer ${token}`)
-  
-  const response = await fetch(`${API_BASE}/certs`, {
+  return apiRequest<SSLCertificate>(`${API_BASE}/certs`, {
     method: 'POST',
     body: formData,
-    headers
-  })
-  
-  if (!response.ok) {
-    const error = await response.text()
-    throw new Error(error || `上传失败(${response.status})`)
-  }
-  
-  return await response.json()
+  }, token)
 }
 
 export async function deleteCertificate(

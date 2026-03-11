@@ -23,6 +23,15 @@ func TestValidateConfig_Issues(t *testing.T) {
 			wantKey: "security.allowedCidrs[0]",
 		},
 		{
+			name: "invalid trusted proxy cidr",
+			cfg: Config{
+				Security: SecurityConfig{
+					TrustedProxyCIDRs: []string{"bad-proxy-cidr"},
+				},
+			},
+			wantKey: "security.trustedProxyCidrs[0]",
+		},
+		{
 			name: "unsupported cdn provider",
 			cfg: Config{
 				Security: SecurityConfig{

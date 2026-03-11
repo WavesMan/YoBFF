@@ -67,6 +67,7 @@ type CloudflareConfig struct {
 // SecurityConfig 表示回源安全策略。
 type SecurityConfig struct {
 	AllowedCIDRs        []string                      `json:"allowedCidrs"`
+	TrustedProxyCIDRs   []string                      `json:"trustedProxyCidrs"`
 	AllowedCDNProviders []string                      `json:"allowedCdnProviders"`
 	CDNProviderSettings map[string]CDNProviderSetting `json:"cdnProviderSettings,omitempty"`
 	BlockPageHTML       string                        `json:"blockPageHtml"`

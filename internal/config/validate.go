@@ -31,6 +31,19 @@ func ValidateConfig(cfg Config, configPath string) []ValidationIssue {
 			continue
 		}
 	}
+	for idx, cidrText := range cfg.Security.TrustedProxyCIDRs {
+		value := strings.TrimSpace(cidrText)
+		if value == "" {
+			continue
+		}
+		if _, err := netip.ParsePrefix(value); err != nil {
+			issues = append(issues, ValidationIssue{
+				Path:    fmt.Sprintf("security.trustedProxyCidrs[%d]", idx),
+				Message: err.Error(),
+			})
+			continue
+		}
+	}
 
 	supportedCDNProviders := map[string]struct{}{
 		"aliyun":     {},

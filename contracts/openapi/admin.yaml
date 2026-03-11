@@ -834,6 +834,10 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalError"
         "503":
           $ref: "#/components/responses/AuthUnavailable"
   /api/v1/certs/{id}:
@@ -846,20 +850,16 @@ paths:
             type: string
           required: true
       responses:
-        "200":
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  status:
-                    type: string
-                    example: deleted
+        "204":
+          description: No Content
+        "400":
+          $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
-        "404":
-          $ref: "#/components/responses/BadRequest"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalError"
         "503":
           $ref: "#/components/responses/AuthUnavailable"
   /api/v1/sites/{site_id}/config:
@@ -1472,6 +1472,12 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/ErrorResponse"
+    InternalError:
+      description: 服务内部错误
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
     AuthUnavailable:
       description: 鉴权未配置
       content:
@@ -1853,6 +1859,9 @@ components:
         total:
           type: integer
           format: int64
+        page:
+          type: integer
+          format: int32
     SSLCertificate:
       type: object
       properties:
@@ -1974,6 +1983,10 @@ components:
       type: object
       properties:
         allowedCidrs:
+          type: array
+          items:
+            type: string
+        trustedProxyCidrs:
           type: array
           items:
             type: string
