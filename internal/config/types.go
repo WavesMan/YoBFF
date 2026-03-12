@@ -57,9 +57,6 @@ type CDNSyncConfig struct {
 
 // CloudflareConfig 定义 Cloudflare 特定配置。
 type CloudflareConfig struct {
-	IPv4URL string `json:"ipv4_url"`
-	IPv6URL string `json:"ipv6_url"`
-	// 以下字段为未来 API 管理预留
 	Endpoint string `json:"endpoint,omitempty"`
 	APIToken string `json:"api_token,omitempty"`
 	ZoneID   string `json:"zone_id,omitempty"`
@@ -67,12 +64,12 @@ type CloudflareConfig struct {
 
 // SecurityConfig 表示回源安全策略。
 type SecurityConfig struct {
-	AllowedCIDRs        []string                      `json:"allowedCidrs"`
-	TrustedProxyCIDRs   []string                      `json:"trustedProxyCidrs"`
-	AllowedCDNProviders []string                      `json:"allowedCdnProviders"`
-	CDNProviderSettings map[string]CDNProviderSetting `json:"cdnProviderSettings,omitempty"`
-	OriginProtectionMode string                       `json:"originProtectionMode,omitempty"`
-	EnableHSTS          bool                          `json:"enableHsts"`
+	AllowedCIDRs         []string                      `json:"allowedCidrs"`
+	TrustedProxyCIDRs    []string                      `json:"trustedProxyCidrs"`
+	AllowedCDNProviders  []string                      `json:"allowedCdnProviders"`
+	CDNProviderSettings  map[string]CDNProviderSetting `json:"cdnProviderSettings,omitempty"`
+	OriginProtectionMode string                        `json:"originProtectionMode,omitempty"`
+	EnableHSTS           bool                          `json:"enableHsts"`
 }
 
 // CDNProviderSetting 定义单个 CDN 厂商的特定配置。
@@ -83,8 +80,6 @@ type CDNProviderSetting struct {
 	AccountID              string `json:"accountId,omitempty"`
 	ZoneID                 string `json:"zoneId,omitempty"`
 	Endpoint               string `json:"endpoint,omitempty"`
-	IPv4URL                string `json:"ipv4Url,omitempty"`
-	IPv6URL                string `json:"ipv6Url,omitempty"`
 	RefreshIntervalSeconds int    `json:"refreshIntervalSeconds,omitempty"`
 	MaxStalenessSeconds    int    `json:"maxStalenessSeconds,omitempty"`
 }
@@ -167,7 +162,7 @@ func defaultConfig() Config {
 			},
 		},
 		Security: SecurityConfig{
-			EnableHSTS:    false,
+			EnableHSTS: false,
 		},
 		CDNSync: CDNSyncConfig{
 			Enabled:   false,

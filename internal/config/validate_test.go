@@ -50,15 +50,6 @@ func TestValidateConfig_Issues(t *testing.T) {
 			wantKey: "security.allowedCdnProviders[1]",
 		},
 		{
-			name: "cloudflare cdn settings url required",
-			cfg: Config{
-				Security: SecurityConfig{
-					AllowedCDNProviders: []string{"cloudflare"},
-				},
-			},
-			wantKey: "security.cdnProviderSettings.cloudflare.ipv4Url",
-		},
-		{
 			name: "aliyun cdn settings api key required",
 			cfg: Config{
 				Security: SecurityConfig{
@@ -263,8 +254,7 @@ func TestManagerValidateAndProviderIP(t *testing.T) {
     "enabled": true,
     "providers": ["cloudflare"],
     "cloudflare": {
-      "ipv4URL": "https://example.com/ips-v4",
-      "ipv6URL": "https://example.com/ips-v6"
+      "endpoint": "https://api.cloudflare.com"
     }
   }
 }`)

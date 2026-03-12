@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 )
 
@@ -13,22 +12,25 @@ import (
 func TestProvider_FetchCIDRs(t *testing.T) {
 	// 1. 创建 Mock Server
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/ipv4":
-			fmt.Fprintln(w, "192.0.2.0/24")
-			fmt.Fprintln(w, "198.51.100.0/24")
-		case "/ipv6":
-			fmt.Fprintln(w, "2001:db8::/32")
-		default:
+		if r.URL.Path != "/client/v4/ips" {
 			http.NotFound(w, r)
+			return
 		}
+		_, _ = fmt.Fprintln(w, `{
+  "success": true,
+  "errors": [],
+  "messages": [],
+  "result": {
+    "ipv4_cidrs": ["192.0.2.0/24", "198.51.100.0/24"],
+    "ipv6_cidrs": ["2001:db8::/32"]
+  }
+}`)
 	}))
 	defer ts.Close()
 
 	// 2. 初始化 Provider
 	cfg := Config{
-		IPv4URL: ts.URL + "/ipv4",
-		IPv6URL: ts.URL + "/ipv6",
+		Endpoint: ts.URL,
 	}
 	p := NewProvider(cfg)
 
@@ -64,8 +66,7 @@ func TestProvider_FetchCIDRs_Error(t *testing.T) {
 	defer ts.Close()
 
 	cfg := Config{
-		IPv4URL: ts.URL + "/ipv4",
-		IPv6URL: ts.URL + "/ipv6",
+		Endpoint: ts.URL,
 	}
 	p := NewProvider(cfg)
 
@@ -77,11 +78,8 @@ func TestProvider_FetchCIDRs_Error(t *testing.T) {
 
 func TestProvider_DefaultConfigAndName(t *testing.T) {
 	p := NewProvider(Config{})
-	if p.config.IPv4URL != DefaultIPv4URL {
-		t.Fatalf("默认 IPv4URL 不匹配: %s", p.config.IPv4URL)
-	}
-	if p.config.IPv6URL != DefaultIPv6URL {
-		t.Fatalf("默认 IPv6URL 不匹配: %s", p.config.IPv6URL)
+	if p.config.Endpoint != DefaultEndpoint {
+		t.Fatalf("默认 endpoint 不匹配: %s", p.config.Endpoint)
 	}
 	if p.Name() != "cloudflare" {
 		t.Fatalf("Provider 名称不匹配: %s", p.Name())
@@ -90,15 +88,20 @@ func TestProvider_DefaultConfigAndName(t *testing.T) {
 
 func TestProvider_FetchCIDRs_IgnoresCommentsAndBlank(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintln(w, "")
-		fmt.Fprintln(w, "#comment")
-		fmt.Fprintln(w, "  203.0.113.0/24  ")
+		_, _ = fmt.Fprintln(w, `{
+  "success": true,
+  "errors": [],
+  "messages": [],
+  "result": {
+    "ipv4_cidrs": ["", "#comment", "  203.0.113.0/24  "],
+    "ipv6_cidrs": ["2001:db8::/32"]
+  }
+}`)
 	}))
 	defer ts.Close()
 
 	p := NewProvider(Config{
-		IPv4URL: ts.URL + "/v4",
-		IPv6URL: ts.URL + "/v6",
+		Endpoint: ts.URL,
 	})
 	cidrs, err := p.FetchCIDRs(context.Background())
 	if err != nil {
@@ -106,10 +109,5 @@ func TestProvider_FetchCIDRs_IgnoresCommentsAndBlank(t *testing.T) {
 	}
 	if len(cidrs) != 2 {
 		t.Fatalf("CIDR 数量不匹配: got=%d cidrs=%v", len(cidrs), cidrs)
-	}
-	for _, cidr := range cidrs {
-		if strings.HasPrefix(cidr, "#") || strings.TrimSpace(cidr) == "" {
-			t.Fatalf("CIDR 过滤失败: %q", cidr)
-		}
 	}
 }

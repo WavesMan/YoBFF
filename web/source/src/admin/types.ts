@@ -68,8 +68,6 @@ export type CDNProviderSetting = {
   accountId?: string
   zoneId?: string
   endpoint?: string
-  ipv4Url?: string
-  ipv6Url?: string
   refreshIntervalSeconds?: number
   maxStalenessSeconds?: number
 }
@@ -92,8 +90,6 @@ export type CDNSyncConfig = {
   providers?: string[]
   schedule?: string
   cloudflare?: {
-    ipv4_url?: string
-    ipv6_url?: string
     endpoint?: string
     api_token?: string
     zone_id?: string

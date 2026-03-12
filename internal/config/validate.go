@@ -116,13 +116,6 @@ func ValidateConfig(cfg Config, configPath string) []ValidationIssue {
 		}
 
 		switch provider {
-		case "cloudflare":
-			if strings.TrimSpace(settings.IPv4URL) == "" && strings.TrimSpace(settings.IPv6URL) == "" {
-				issues = append(issues, ValidationIssue{
-					Path:    fmt.Sprintf("security.cdnProviderSettings.%s.ipv4Url", provider),
-					Message: "ipv4Url or ipv6Url is required",
-				})
-			}
 		case "aliyun":
 			if strings.TrimSpace(settings.APIKey) == "" {
 				issues = append(issues, ValidationIssue{

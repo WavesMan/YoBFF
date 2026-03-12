@@ -93,9 +93,6 @@ export function SecurityTab({
 
   const getEnableError = useCallback((provider: string, settings: CDNProviderSetting) => {
     if (provider === 'cloudflare') {
-      const ipv4 = String(settings.ipv4Url || '').trim()
-      const ipv6 = String(settings.ipv6Url || '').trim()
-      if (!ipv4 && !ipv6) return '需要填写 ipv4Url 或 ipv6Url 才能启用'
       return ''
     }
     if (provider === 'aliyun') {
@@ -344,56 +341,9 @@ export function SecurityTab({
                           </div>
                         )}
                         {provider === 'cloudflare' && (
-                          <>
-                            <div className="form-field small">
-                              <label>IPv4 列表 URL</label>
-                              <input
-                                className="input small"
-                                placeholder="必填其一：ipv4Url / ipv6Url"
-                                value={settings.ipv4Url || ''}
-                                onChange={e => {
-                                  const val = e.target.value
-                                  updateConfig(prev => {
-                                    const currentSettings = prev.security?.cdnProviderSettings || {}
-                                    return {
-                                      ...prev,
-                                      security: {
-                                        ...prev.security,
-                                        cdnProviderSettings: {
-                                          ...currentSettings,
-                                          [provider]: { ...currentSettings[provider], ipv4Url: val }
-                                        }
-                                      }
-                                    }
-                                  })
-                                }}
-                              />
-                            </div>
-                            <div className="form-field small">
-                              <label>IPv6 列表 URL</label>
-                              <input
-                                className="input small"
-                                placeholder="可选"
-                                value={settings.ipv6Url || ''}
-                                onChange={e => {
-                                  const val = e.target.value
-                                  updateConfig(prev => {
-                                    const currentSettings = prev.security?.cdnProviderSettings || {}
-                                    return {
-                                      ...prev,
-                                      security: {
-                                        ...prev.security,
-                                        cdnProviderSettings: {
-                                          ...currentSettings,
-                                          [provider]: { ...currentSettings[provider], ipv6Url: val }
-                                        }
-                                      }
-                                    }
-                                  })
-                                }}
-                              />
-                            </div>
-                          </>
+                          <div className="muted" style={{ fontSize: '12px' }}>
+                            无需配置，系统将从 Cloudflare 公共接口同步回源 IP
+                          </div>
                         )}
 
                         {provider === 'aliyun' && (

@@ -2000,10 +2000,6 @@ components:
     CloudflareConfig:
       type: object
       properties:
-        ipv4_url:
-          type: string
-        ipv6_url:
-          type: string
         endpoint:
           type: string
         api_token:
@@ -2100,10 +2096,6 @@ components:
         zoneId:
           type: string
         endpoint:
-          type: string
-        ipv4Url:
-          type: string
-        ipv6Url:
           type: string
         refreshIntervalSeconds:
           type: integer

@@ -183,16 +183,20 @@ func TestSiteRoutes_CDNOriginRefreshAndStatus(t *testing.T) {
 	}
 
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/v4":
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte("1.1.1.0/24\n"))
-		case "/v6":
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte("2400:cb00::/32\n"))
-		default:
+		if r.URL.Path != "/client/v4/ips" {
 			w.WriteHeader(http.StatusNotFound)
+			return
 		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{
+  "success": true,
+  "errors": [],
+  "messages": [],
+  "result": {
+    "ipv4_cidrs": ["1.1.1.0/24"],
+    "ipv6_cidrs": ["2400:cb00::/32"]
+  }
+}`))
 	}))
 	defer upstream.Close()
 
@@ -201,8 +205,7 @@ func TestSiteRoutes_CDNOriginRefreshAndStatus(t *testing.T) {
 			"allowedCdnProviders": []string{"cloudflare"},
 			"cdnProviderSettings": map[string]any{
 				"cloudflare": map[string]any{
-					"ipv4Url": upstream.URL + "/v4",
-					"ipv6Url": upstream.URL + "/v6",
+					"endpoint": upstream.URL,
 				},
 			},
 		},

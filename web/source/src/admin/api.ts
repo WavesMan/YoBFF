@@ -102,8 +102,6 @@ export function normalizeConfig(config?: Config | null): Config {
       providers: config?.cdnSync?.providers ?? [],
       schedule: config?.cdnSync?.schedule ?? '',
       cloudflare: {
-        ipv4_url: config?.cdnSync?.cloudflare?.ipv4_url ?? '',
-        ipv6_url: config?.cdnSync?.cloudflare?.ipv6_url ?? '',
         endpoint: config?.cdnSync?.cloudflare?.endpoint ?? '',
         api_token: config?.cdnSync?.cloudflare?.api_token ?? '',
         zone_id: config?.cdnSync?.cloudflare?.zone_id ?? '',

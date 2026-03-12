@@ -286,8 +286,7 @@ func buildCDNProvider(provider string, settings config.CDNProviderSetting) (cdn.
 	switch provider {
 	case "cloudflare":
 		return cloudflare.NewProvider(cloudflare.Config{
-			IPv4URL: strings.TrimSpace(settings.IPv4URL),
-			IPv6URL: strings.TrimSpace(settings.IPv6URL),
+			Endpoint: strings.TrimSpace(settings.Endpoint),
 		}), nil
 	case "aliyun":
 		return aliyun.NewProvider(aliyun.Config{

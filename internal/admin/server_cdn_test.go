@@ -87,7 +87,7 @@ func TestServer_CDNConfig(t *testing.T) {
 			Enabled:    true,
 			Providers:  []string{"cloudflare", "aliyun"},
 			Schedule:   "@every 30m",
-			Cloudflare: config.CloudflareConfig{IPv4URL: "http://example.com"},
+			Cloudflare: config.CloudflareConfig{Endpoint: "http://example.com"},
 		}
 		body, _ := json.Marshal(newConfig)
 		req := httptest.NewRequest(http.MethodPut, "/api/v1/config/cdn", bytes.NewReader(body))
@@ -107,8 +107,8 @@ func TestServer_CDNConfig(t *testing.T) {
 		if len(current.Providers) != 2 {
 			t.Errorf("Config not updated: Providers length %d", len(current.Providers))
 		}
-		if current.Cloudflare.IPv4URL != "http://example.com" {
-			t.Error("Config not updated: Cloudflare IPv4URL mismatch")
+		if current.Cloudflare.Endpoint != "http://example.com" {
+			t.Error("Config not updated: Cloudflare endpoint mismatch")
 		}
 	})
 }

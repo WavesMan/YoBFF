@@ -17,7 +17,19 @@ import (
 func TestService_trySync(t *testing.T) {
 	// 1. Mock Cloudflare Server
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintln(w, "1.1.1.1/32")
+		if r.URL.Path != "/client/v4/ips" {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = fmt.Fprintln(w, `{
+  "success": true,
+  "errors": [],
+  "messages": [],
+  "result": {
+    "ipv4_cidrs": ["1.1.1.1/32"],
+    "ipv6_cidrs": []
+  }
+}`)
 	}))
 	defer ts.Close()
 
@@ -39,11 +51,10 @@ func TestService_trySync(t *testing.T) {
 			"providers": ["cloudflare"],
 			"schedule": "@every 1h",
 			"cloudflare": {
-				"ipv4_url": "%s/ipv4",
-				"ipv6_url": "%s/ipv6"
+				"endpoint": "%s"
 			}
 		}
-	}`, ts.URL, ts.URL)
+	}`, ts.URL)
 	f.WriteString(content)
 	f.Close()
 
@@ -249,8 +260,7 @@ func TestService_SyncProviderErrorAndUnknown(t *testing.T) {
 			"providers": ["cloudflare", "unknown-provider"],
 			"schedule": "1h",
 			"cloudflare": {
-				"ipv4_url": "http://127.0.0.1:1/ipv4",
-				"ipv6_url": "http://127.0.0.1:1/ipv6"
+				"endpoint": "http://127.0.0.1:1"
 			}
 		}
 	}`

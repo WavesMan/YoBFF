@@ -127,8 +127,7 @@ func (s *Service) syncProvider(ctx context.Context, name string, cfg config.Conf
 	switch strings.ToLower(name) {
 	case "cloudflare":
 		provider = cloudflare.NewProvider(cloudflare.Config{
-			IPv4URL: cfg.CDNSync.Cloudflare.IPv4URL,
-			IPv6URL: cfg.CDNSync.Cloudflare.IPv6URL,
+			Endpoint: cfg.CDNSync.Cloudflare.Endpoint,
 		})
 	default:
 		s.logger.Warn("跳过未知 CDN 提供商", zap.String("provider", name))
@@ -228,7 +227,7 @@ func (s *SiteOriginService) run(ctx context.Context) {
 		return
 	}
 
-	s.warmCache(ctx)
+	s.warmCache()
 
 	ticker := time.NewTicker(s.tickInterval)
 	defer ticker.Stop()
@@ -281,7 +280,7 @@ func (s *SiteOriginService) tick(ctx context.Context) {
 			}
 
 			itemStatus, ok := statusMap[provider]
-			due := s.isDue(now, provider, settings, itemStatus, ok, random)
+			due := s.isDue(now, settings, itemStatus, ok, random)
 			if !due {
 				continue
 			}
@@ -324,7 +323,7 @@ func (s *SiteOriginService) tick(ctx context.Context) {
 	wg.Wait()
 }
 
-func (s *SiteOriginService) isDue(now time.Time, provider string, settings config.CDNProviderSetting, status store.SiteCDNOriginStatus, hasStatus bool, random *rand.Rand) bool {
+func (s *SiteOriginService) isDue(now time.Time, settings config.CDNProviderSetting, status store.SiteCDNOriginStatus, hasStatus bool, random *rand.Rand) bool {
 	refreshInterval := time.Hour
 	if settings.RefreshIntervalSeconds > 0 {
 		refreshInterval = time.Duration(settings.RefreshIntervalSeconds) * time.Second
@@ -416,7 +415,7 @@ func (s *SiteOriginService) runJob(ctx context.Context, j siteOriginJob) {
 	_ = s.manager.UpdateSiteCDNProviderSnapshot(j.siteID, j.provider, cidrs, success)
 }
 
-func (s *SiteOriginService) warmCache(ctx context.Context) {
+func (s *SiteOriginService) warmCache() {
 	sites, err := s.store.ListSites(store.SiteFilter{})
 	if err != nil {
 		return
@@ -477,8 +476,7 @@ func buildOriginProvider(provider string, settings config.CDNProviderSetting) (c
 	switch strings.ToLower(strings.TrimSpace(provider)) {
 	case "cloudflare":
 		return cloudflare.NewProvider(cloudflare.Config{
-			IPv4URL: strings.TrimSpace(settings.IPv4URL),
-			IPv6URL: strings.TrimSpace(settings.IPv6URL),
+			Endpoint: strings.TrimSpace(settings.Endpoint),
 		}), nil
 	case "aliyun":
 		return aliyun.NewProvider(aliyun.Config{
