@@ -41,8 +41,7 @@ func TestHandler_SiteConfigOverride(t *testing.T) {
 	// 站点配置：仅允许 192.168.1.1
 	siteCfg := config.Config{
 		Security: config.SecurityConfig{
-			AllowedCIDRs:  []string{"192.168.1.1/32"},
-			BlockPageHTML: "<html>site-blocked</html>",
+			AllowedCIDRs: []string{"192.168.1.1/32"},
 		},
 	}
 	if _, err := s.UpdateSiteConfig(createdSite.ID, siteCfg, "admin", "test"); err != nil {
@@ -52,8 +51,7 @@ func TestHandler_SiteConfigOverride(t *testing.T) {
 	// 2. 初始化全局配置（允许所有 127.0.0.0/8）
 	manager := buildManagerForTest(t, config.Config{
 		Security: config.SecurityConfig{
-			AllowedCIDRs:  []string{"127.0.0.0/8"},
-			BlockPageHTML: "<html>global-blocked</html>",
+			AllowedCIDRs: []string{"127.0.0.0/8"},
 		},
 		Routing: config.RoutingConfig{
 			Domains: []config.DomainRule{
@@ -108,8 +106,7 @@ func TestHandler_SiteConfigOverride(t *testing.T) {
 func TestHandler_BlocksWhenIPNotAllowed(t *testing.T) {
 	manager := buildManagerForTest(t, config.Config{
 		Security: config.SecurityConfig{
-			AllowedCIDRs:  []string{"10.0.0.0/8"},
-			BlockPageHTML: "<html>blocked</html>",
+			AllowedCIDRs: []string{"10.0.0.0/8"},
 		},
 		Routing: config.RoutingConfig{
 			Domains: []config.DomainRule{
@@ -155,9 +152,6 @@ func TestHandler_BlocksWhenIPNotAllowed(t *testing.T) {
 // TestHandler_RedirectsToHTTPSWhenForced 验证强制 HTTPS 路由规则会触发 301 重定向。
 func TestHandler_RedirectsToHTTPSWhenForced(t *testing.T) {
 	manager := buildManagerForTest(t, config.Config{
-		Security: config.SecurityConfig{
-			BlockPageHTML: "<html/>",
-		},
 		Routing: config.RoutingConfig{
 			Domains: []config.DomainRule{
 				{Domain: "example.local", Upstream: "http://127.0.0.1:18080", ForceHTTPS: true},
@@ -208,9 +202,6 @@ func TestHandler_ProxiesToUpstream(t *testing.T) {
 	defer upstream.Close()
 
 	manager := buildManagerForTest(t, config.Config{
-		Security: config.SecurityConfig{
-			BlockPageHTML: "<html/>",
-		},
 		Routing: config.RoutingConfig{
 			Domains: []config.DomainRule{
 				{Domain: "example.local", Upstream: upstream.URL, ForceHTTPS: false},
@@ -266,9 +257,6 @@ func TestHandler_ProxiesToUpstreamOverTLS(t *testing.T) {
 	defer upstream.Close()
 
 	manager := buildManagerForTest(t, config.Config{
-		Security: config.SecurityConfig{
-			BlockPageHTML: "<html/>",
-		},
 		Routing: config.RoutingConfig{
 			Domains: []config.DomainRule{
 				{Domain: "example.local", Upstream: upstream.URL, ForceHTTPS: false},
@@ -293,9 +281,6 @@ func TestHandler_ProxiesToUpstreamOverTLS(t *testing.T) {
 // TestHandler_UpstreamErrorReturns502 验证上游不可达时返回 502。
 func TestHandler_UpstreamErrorReturns502(t *testing.T) {
 	manager := buildManagerForTest(t, config.Config{
-		Security: config.SecurityConfig{
-			BlockPageHTML: "<html/>",
-		},
 		Routing: config.RoutingConfig{
 			Domains: []config.DomainRule{
 				{Domain: "example.local", Upstream: "http://127.0.0.1:0", ForceHTTPS: false},

@@ -171,6 +171,86 @@ func TestSiteRoutes_ConfigAndRollback(t *testing.T) {
 	}
 }
 
+func TestSiteRoutes_CDNOriginRefreshAndStatus(t *testing.T) {
+	handler, siteStore := buildSiteHandler(t)
+	site, err := siteStore.CreateSite(store.Site{
+		Name:     "cdn",
+		Hostname: "cdn.example.com",
+		IP:       "10.0.0.12",
+	})
+	if err != nil {
+		t.Fatalf("创建站点失败: %v", err)
+	}
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v4":
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("1.1.1.0/24\n"))
+		case "/v6":
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("2400:cb00::/32\n"))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer upstream.Close()
+
+	putConfigPayload := map[string]any{
+		"security": map[string]any{
+			"allowedCdnProviders": []string{"cloudflare"},
+			"cdnProviderSettings": map[string]any{
+				"cloudflare": map[string]any{
+					"ipv4Url": upstream.URL + "/v4",
+					"ipv6Url": upstream.URL + "/v6",
+				},
+			},
+		},
+	}
+	putConfigBody, err := json.Marshal(putConfigPayload)
+	if err != nil {
+		t.Fatalf("序列化配置失败: %v", err)
+	}
+	putConfigRec := requestWithToken(t, handler, http.MethodPut, "/api/v1/sites/"+site.ID+"/config", putConfigBody)
+	if putConfigRec.Result().StatusCode != http.StatusOK {
+		t.Fatalf("更新站点配置状态码不匹配: got=%d body=%s", putConfigRec.Result().StatusCode, putConfigRec.Body.String())
+	}
+
+	refreshRec := requestWithToken(t, handler, http.MethodPost, "/api/v1/sites/"+site.ID+"/cdn/origin/refresh", []byte(`{}`))
+	if refreshRec.Result().StatusCode != http.StatusOK {
+		t.Fatalf("刷新回源IP状态码不匹配: got=%d body=%s", refreshRec.Result().StatusCode, refreshRec.Body.String())
+	}
+	refreshPayload := decodeMap(t, refreshRec)
+	results, ok := refreshPayload["results"].([]any)
+	if !ok || len(results) != 1 {
+		t.Fatalf("刷新结果不匹配: %#v", refreshPayload)
+	}
+	resultItem, _ := results[0].(map[string]any)
+	if resultItem["provider"] != "cloudflare" {
+		t.Fatalf("provider 不匹配: %#v", resultItem)
+	}
+	if okValue, _ := resultItem["ok"].(bool); !okValue {
+		t.Fatalf("刷新应成功: %#v", resultItem)
+	}
+
+	statusRec := requestWithToken(t, handler, http.MethodGet, "/api/v1/sites/"+site.ID+"/cdn/origin/status", nil)
+	if statusRec.Result().StatusCode != http.StatusOK {
+		t.Fatalf("查询回源状态码不匹配: got=%d body=%s", statusRec.Result().StatusCode, statusRec.Body.String())
+	}
+	statusPayload := decodeMap(t, statusRec)
+	statusItems, ok := statusPayload["items"].([]any)
+	if !ok || len(statusItems) != 1 {
+		t.Fatalf("状态列表不匹配: %#v", statusPayload)
+	}
+	statusItem, _ := statusItems[0].(map[string]any)
+	if statusItem["provider"] != "cloudflare" {
+		t.Fatalf("状态 provider 不匹配: %#v", statusItem)
+	}
+	if statusItem["last_success_at"] == "" {
+		t.Fatalf("last_success_at 为空: %#v", statusItem)
+	}
+}
+
 func TestSiteRoutes_LogAndErrorPaths(t *testing.T) {
 	handler, siteStore := buildSiteHandler(t)
 	site, err := siteStore.CreateSite(store.Site{

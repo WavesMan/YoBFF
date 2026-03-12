@@ -65,6 +65,13 @@ export type CDNProviderSetting = {
   apiKey?: string
   secretKey?: string
   option?: string
+  accountId?: string
+  zoneId?: string
+  endpoint?: string
+  ipv4Url?: string
+  ipv6Url?: string
+  refreshIntervalSeconds?: number
+  maxStalenessSeconds?: number
 }
 
 export type SecurityConfig = {
@@ -72,7 +79,7 @@ export type SecurityConfig = {
   trustedProxyCidrs?: string[]
   allowedCdnProviders?: string[]
   cdnProviderSettings?: Record<string, CDNProviderSetting>
-  blockPageHtml?: string
+  originProtectionMode?: 'disabled' | 'enforced'
   enableHsts?: boolean
 }
 
@@ -267,4 +274,34 @@ export type LoginResponse = {
 
 export type LoginCaptchaRequirementResponse = {
   required: boolean
+}
+
+export type SiteCDNOriginStatus = {
+  site_id: string
+  provider: string
+  last_attempt_at?: string
+  last_success_at?: string
+  consecutive_failures: number
+  last_error?: string
+  updated_at: string
+}
+
+export type SiteCDNOriginStatusListResponse = {
+  items: SiteCDNOriginStatus[]
+}
+
+export type SiteCDNOriginRefreshRequest = {
+  providers?: string[]
+}
+
+export type SiteCDNOriginRefreshResult = {
+  provider: string
+  ok: boolean
+  count?: number
+  error?: string
+}
+
+export type SiteCDNOriginRefreshResponse = {
+  status: string
+  results: SiteCDNOriginRefreshResult[]
 }

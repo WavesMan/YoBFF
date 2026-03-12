@@ -41,12 +41,12 @@ func TestStore_GlobalConfigVersionAuditAndCertificates(t *testing.T) {
 	s := buildTestStore(t)
 	cfg1 := config.Config{
 		Security: config.SecurityConfig{
-			BlockPageHTML: "v1",
+			AllowedCIDRs: []string{"10.0.0.0/8"},
 		},
 	}
 	cfg2 := config.Config{
 		Security: config.SecurityConfig{
-			BlockPageHTML: "v2",
+			AllowedCIDRs: []string{"127.0.0.1/32"},
 		},
 	}
 	v1, err := s.SaveVersion(cfg1, "alice", "update")
@@ -80,8 +80,8 @@ func TestStore_GlobalConfigVersionAuditAndCertificates(t *testing.T) {
 	if err != nil {
 		t.Fatalf("读取版本配置失败: %v", err)
 	}
-	if gotCfg.Security.BlockPageHTML != "v1" {
-		t.Fatalf("配置不匹配: got=%q", gotCfg.Security.BlockPageHTML)
+	if len(gotCfg.Security.AllowedCIDRs) != 1 || gotCfg.Security.AllowedCIDRs[0] != "10.0.0.0/8" {
+		t.Fatalf("配置不匹配: %+v", gotCfg.Security.AllowedCIDRs)
 	}
 
 	if err = s.SaveAudit("config_update", v1.ID, "alice", map[string]string{"k": "v"}); err != nil {
@@ -188,7 +188,7 @@ func TestStore_SiteOperationsCoverAllPaths(t *testing.T) {
 	if err != nil {
 		t.Fatalf("读取站点空配置失败: %v", err)
 	}
-	if cfgEmpty.Security.BlockPageHTML != "" {
+	if len(cfgEmpty.Security.AllowedCIDRs) != 0 || cfgEmpty.Security.OriginProtectionMode != "" || cfgEmpty.Security.EnableHSTS {
 		t.Fatalf("空配置应返回零值: %+v", cfgEmpty)
 	}
 
@@ -198,12 +198,21 @@ func TestStore_SiteOperationsCoverAllPaths(t *testing.T) {
 
 	cfg := config.Config{
 		Security: config.SecurityConfig{
-			BlockPageHTML: "<html>blocked</html>",
+			AllowedCIDRs:         []string{"127.0.0.1/32"},
+			OriginProtectionMode: "disabled",
+			EnableHSTS:           false,
 		},
 	}
 	for i := 0; i < 12; i++ {
 		nextCfg := cfg
-		nextCfg.Security.BlockPageHTML = cfg.Security.BlockPageHTML + "-" + time.Now().UTC().Format(time.RFC3339Nano)
+		if i%2 == 0 {
+			nextCfg.Security.AllowedCIDRs = []string{"127.0.0.1/32", "::1/128"}
+			nextCfg.Security.OriginProtectionMode = "enforced"
+		} else {
+			nextCfg.Security.AllowedCIDRs = []string{"127.0.0.1/32"}
+			nextCfg.Security.OriginProtectionMode = "disabled"
+		}
+		nextCfg.Security.EnableHSTS = i%3 == 0
 		version, saveErr := s.UpdateSiteConfig(site1.ID, nextCfg, "tester", "update")
 		if saveErr != nil {
 			t.Fatalf("更新站点配置失败: %v", saveErr)
@@ -217,7 +226,7 @@ func TestStore_SiteOperationsCoverAllPaths(t *testing.T) {
 	if err != nil {
 		t.Fatalf("按主机名读取配置失败: %v", err)
 	}
-	if currentCfg.Security.BlockPageHTML == "" {
+	if len(currentCfg.Security.AllowedCIDRs) == 0 {
 		t.Fatalf("站点配置未生效")
 	}
 

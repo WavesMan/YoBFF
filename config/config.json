@@ -12,7 +12,6 @@
             "0.0.0.0/0",
             "::/0"
         ],
-        "blockPageHtml": "<html><body><h1>403 Forbidden</h1></body></html>",
         "enableHsts": false
     },
     "routing": {

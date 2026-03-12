@@ -625,6 +625,9 @@ export function SiteConfigDrawer({ token, operator, siteId, onClose }: SiteConfi
 
               {activeTab === 'security' && (
                 <SecurityTab 
+                  token={token}
+                  operator={operator}
+                  siteId={siteId}
                   site={site}
                   config={config}
                   updateConfig={updateConfig}

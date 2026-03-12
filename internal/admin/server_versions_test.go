@@ -55,7 +55,7 @@ func requestVersionAPI(t *testing.T, handler http.Handler, method string, path s
 func TestServerHandler_ConfigVersionsAndRollback(t *testing.T) {
 	handler, manager, siteStore := buildVersionHandler(t)
 	cfg := manager.CurrentConfig()
-	cfg.Security.BlockPageHTML = "<html>v1</html>"
+	cfg.Security.AllowedCIDRs = []string{"127.0.0.1/32"}
 	saved, err := siteStore.SaveVersion(cfg, "tester", "init")
 	if err != nil {
 		t.Fatalf("保存配置版本失败: %v", err)
@@ -244,7 +244,7 @@ func TestServerHandler_ConfigPutVersionFailed(t *testing.T) {
 
 	srv := NewServer(manager, logRuntime, pipeline, siteStore)
 	handler := srv.Handler()
-	body := []byte(`{"security":{"blockPageHtml":"<html/>"},"routing":{"defaultUpstream":"http://127.0.0.1:18080"}}`)
+	body := []byte(`{"security":{"allowedCidrs":["127.0.0.1/32"]},"routing":{"defaultUpstream":"http://127.0.0.1:18080"}}`)
 	rec := requestVersionAPI(t, handler, http.MethodPut, "/api/v1/config", body)
 	if rec.Result().StatusCode != http.StatusInternalServerError {
 		t.Fatalf("配置版本保存失败状态码不匹配: got=%d body=%s", rec.Result().StatusCode, rec.Body.String())

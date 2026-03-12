@@ -1335,6 +1335,86 @@ paths:
           $ref: "#/components/responses/RateLimited"
         "503":
           $ref: "#/components/responses/AuthUnavailable"
+  /api/v1/sites/{site_id}/cdn/origin/status:
+    get:
+      summary: 获取站点回源 IP 同步状态
+      parameters:
+        - in: path
+          name: site_id
+          schema:
+            type: string
+          required: true
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/RequestID"
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/RateLimitLimit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/RateLimitRemaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/RateLimitReset"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SiteCDNOriginStatusListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/SiteNotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/AuthUnavailable"
+  /api/v1/sites/{site_id}/cdn/origin/refresh:
+    post:
+      summary: 触发站点回源 IP 立即拉取
+      parameters:
+        - in: path
+          name: site_id
+          schema:
+            type: string
+          required: true
+        - in: header
+          name: X-Operator
+          schema:
+            type: string
+          required: false
+          description: 操作人标识
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SiteCDNOriginRefreshRequest"
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/RequestID"
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/RateLimitLimit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/RateLimitRemaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/RateLimitReset"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SiteCDNOriginRefreshResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/SiteNotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/AuthUnavailable"
   /api/v1/log/level:
     get:
       summary: 查询当前日志级别
@@ -1998,8 +2078,11 @@ components:
           type: object
           additionalProperties:
             $ref: "#/components/schemas/CDNProviderSetting"
-        blockPageHtml:
+        originProtectionMode:
           type: string
+          enum:
+            - disabled
+            - enforced
         enableHsts:
           type: boolean
     CDNProviderSetting:
@@ -2011,6 +2094,93 @@ components:
           type: string
         option:
           type: string
+        accountId:
+          type: string
+        zoneId:
+          type: string
+        endpoint:
+          type: string
+        ipv4Url:
+          type: string
+        ipv6Url:
+          type: string
+        refreshIntervalSeconds:
+          type: integer
+          format: int32
+        maxStalenessSeconds:
+          type: integer
+          format: int32
+    SiteCDNOriginStatus:
+      type: object
+      required:
+        - site_id
+        - provider
+        - consecutive_failures
+        - updated_at
+      properties:
+        site_id:
+          type: string
+        provider:
+          type: string
+        last_attempt_at:
+          type: string
+          format: date-time
+        last_success_at:
+          type: string
+          format: date-time
+        consecutive_failures:
+          type: integer
+          format: int32
+        last_error:
+          type: string
+        updated_at:
+          type: string
+          format: date-time
+    SiteCDNOriginStatusListResponse:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/SiteCDNOriginStatus"
+    SiteCDNOriginRefreshRequest:
+      type: object
+      properties:
+        providers:
+          type: array
+          items:
+            type: string
+          description: 可选，指定需要刷新的 CDN 厂商列表；为空时使用站点配置 allowedCdnProviders
+    SiteCDNOriginRefreshResult:
+      type: object
+      required:
+        - provider
+        - ok
+      properties:
+        provider:
+          type: string
+        ok:
+          type: boolean
+        count:
+          type: integer
+          format: int32
+        error:
+          type: string
+    SiteCDNOriginRefreshResponse:
+      type: object
+      required:
+        - status
+        - results
+      properties:
+        status:
+          type: string
+          example: refreshed
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/SiteCDNOriginRefreshResult"
     RoutingConfig:
       type: object
       properties:

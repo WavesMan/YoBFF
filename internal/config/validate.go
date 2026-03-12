@@ -73,6 +73,58 @@ func ValidateConfig(cfg Config, configPath string) []ValidationIssue {
 		seenProviders[value] = struct{}{}
 	}
 
+	if cfg.Security.OriginProtectionMode != "" {
+		mode := strings.ToLower(strings.TrimSpace(cfg.Security.OriginProtectionMode))
+		if mode != "disabled" && mode != "enforced" {
+			issues = append(issues, ValidationIssue{
+				Path:    "security.originProtectionMode",
+				Message: "origin protection mode is invalid",
+			})
+		}
+	}
+
+	for provider := range seenProviders {
+		settings := CDNProviderSetting{}
+		if cfg.Security.CDNProviderSettings != nil {
+			if value, ok := cfg.Security.CDNProviderSettings[provider]; ok {
+				settings = value
+			}
+		}
+
+		if settings.RefreshIntervalSeconds != 0 {
+			if settings.RefreshIntervalSeconds < 60 || settings.RefreshIntervalSeconds > 86400 {
+				issues = append(issues, ValidationIssue{
+					Path:    fmt.Sprintf("security.cdnProviderSettings.%s.refreshIntervalSeconds", provider),
+					Message: "refresh interval seconds is out of range",
+				})
+			}
+		}
+
+		if settings.MaxStalenessSeconds != 0 {
+			if settings.MaxStalenessSeconds < 60 || settings.MaxStalenessSeconds > 604800 {
+				issues = append(issues, ValidationIssue{
+					Path:    fmt.Sprintf("security.cdnProviderSettings.%s.maxStalenessSeconds", provider),
+					Message: "max staleness seconds is out of range",
+				})
+			}
+			if settings.RefreshIntervalSeconds > 0 && settings.MaxStalenessSeconds > 0 && settings.MaxStalenessSeconds < settings.RefreshIntervalSeconds {
+				issues = append(issues, ValidationIssue{
+					Path:    fmt.Sprintf("security.cdnProviderSettings.%s.maxStalenessSeconds", provider),
+					Message: "max staleness seconds must be >= refresh interval seconds",
+				})
+			}
+		}
+
+		if provider == "cloudflare" || provider == "aliyun" || provider == "tencent" {
+			if strings.TrimSpace(settings.IPv4URL) == "" && strings.TrimSpace(settings.IPv6URL) == "" {
+				issues = append(issues, ValidationIssue{
+					Path:    fmt.Sprintf("security.cdnProviderSettings.%s.ipv4Url", provider),
+					Message: "ipv4Url or ipv6Url is required",
+				})
+			}
+		}
+	}
+
 	for idx, rule := range cfg.Routing.Domains {
 		domain := strings.TrimSpace(rule.Domain)
 		if domain == "" {

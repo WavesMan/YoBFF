@@ -71,15 +71,22 @@ type SecurityConfig struct {
 	TrustedProxyCIDRs   []string                      `json:"trustedProxyCidrs"`
 	AllowedCDNProviders []string                      `json:"allowedCdnProviders"`
 	CDNProviderSettings map[string]CDNProviderSetting `json:"cdnProviderSettings,omitempty"`
-	BlockPageHTML       string                        `json:"blockPageHtml"`
+	OriginProtectionMode string                       `json:"originProtectionMode,omitempty"`
 	EnableHSTS          bool                          `json:"enableHsts"`
 }
 
 // CDNProviderSetting 定义单个 CDN 厂商的特定配置。
 type CDNProviderSetting struct {
-	APIKey    string `json:"apiKey,omitempty"`
-	SecretKey string `json:"secretKey,omitempty"`
-	Option    string `json:"option,omitempty"`
+	APIKey                 string `json:"apiKey,omitempty"`
+	SecretKey              string `json:"secretKey,omitempty"`
+	Option                 string `json:"option,omitempty"`
+	AccountID              string `json:"accountId,omitempty"`
+	ZoneID                 string `json:"zoneId,omitempty"`
+	Endpoint               string `json:"endpoint,omitempty"`
+	IPv4URL                string `json:"ipv4Url,omitempty"`
+	IPv6URL                string `json:"ipv6Url,omitempty"`
+	RefreshIntervalSeconds int    `json:"refreshIntervalSeconds,omitempty"`
+	MaxStalenessSeconds    int    `json:"maxStalenessSeconds,omitempty"`
 }
 
 // RoutingConfig 表示域名到上游的路由规则集合。
@@ -160,7 +167,6 @@ func defaultConfig() Config {
 			},
 		},
 		Security: SecurityConfig{
-			BlockPageHTML: "<html><body><h1>403 Forbidden</h1></body></html>",
 			EnableHSTS:    false,
 		},
 		CDNSync: CDNSyncConfig{

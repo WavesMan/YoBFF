@@ -59,11 +59,12 @@ type CDNStatus struct {
 
 // Manager 负责管理运行时配置快照与原子切换。
 type Manager struct {
-	path         string
-	data         atomic.Pointer[snapshot]
-	mu           sync.Mutex
-	dynamicCIDRs []string
-	cdnStatuses  map[string]CDNStatus
+	path                    string
+	data                    atomic.Pointer[snapshot]
+	mu                      sync.Mutex
+	dynamicCIDRs            []string
+	cdnStatuses             map[string]CDNStatus
+	siteCDNProviderSnapshots map[string]map[string]siteCDNSnapshot
 }
 
 // NewManager 从配置文件初始化配置管理器。
@@ -356,9 +357,6 @@ func fillDefaults(cfg Config) Config {
 	}
 	if cfg.ControlPlane.AdminListenAddr == "" {
 		cfg.ControlPlane.AdminListenAddr = base.ControlPlane.AdminListenAddr
-	}
-	if cfg.Security.BlockPageHTML == "" {
-		cfg.Security.BlockPageHTML = base.Security.BlockPageHTML
 	}
 	return cfg
 }

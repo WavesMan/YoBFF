@@ -94,6 +94,25 @@ func (s *Store) init() error {
 			operator TEXT,
 			source TEXT
 		);
+		CREATE TABLE IF NOT EXISTS site_cdn_origin_snapshots (
+			id TEXT PRIMARY KEY,
+			site_id TEXT NOT NULL,
+			provider TEXT NOT NULL,
+			cidrs_json TEXT NOT NULL,
+			fetched_at TEXT NOT NULL,
+			source TEXT,
+			created_at TEXT NOT NULL
+		);
+		CREATE TABLE IF NOT EXISTS site_cdn_origin_status (
+			site_id TEXT NOT NULL,
+			provider TEXT NOT NULL,
+			last_attempt_at TEXT,
+			last_success_at TEXT,
+			consecutive_failures INTEGER NOT NULL DEFAULT 0,
+			last_error TEXT,
+			updated_at TEXT NOT NULL,
+			PRIMARY KEY (site_id, provider)
+		);
 		CREATE TABLE IF NOT EXISTS site_log_streams (
 			site_id TEXT PRIMARY KEY,
 			filter_query TEXT NOT NULL,
@@ -140,6 +159,8 @@ func (s *Store) init() error {
 		CREATE INDEX IF NOT EXISTS idx_sites_ip ON sites(ip);
 		CREATE INDEX IF NOT EXISTS idx_site_versions_site_id ON site_versions(site_id);
 		CREATE INDEX IF NOT EXISTS idx_site_versions_created_at ON site_versions(created_at DESC);
+		CREATE INDEX IF NOT EXISTS idx_site_cdn_origin_snapshots_site_provider_time ON site_cdn_origin_snapshots(site_id, provider, fetched_at DESC);
+		CREATE INDEX IF NOT EXISTS idx_site_cdn_origin_status_updated_at ON site_cdn_origin_status(updated_at DESC);
 		CREATE INDEX IF NOT EXISTS idx_site_traffic_logs_site_time ON site_traffic_logs(site_id, created_at DESC);
 		CREATE INDEX IF NOT EXISTS idx_site_traffic_logs_level ON site_traffic_logs(level);
 		CREATE INDEX IF NOT EXISTS idx_site_system_logs_site_time ON site_system_logs(site_id, created_at DESC);

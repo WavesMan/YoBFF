@@ -98,7 +98,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if useSiteConfig {
 		// 站点级策略：只要配置了白名单（CIDR 或 CDN），则必须命中其一
-		hasCDNRules := len(siteCfg.Security.AllowedCDNProviders) > 0
+		mode := strings.ToLower(strings.TrimSpace(siteCfg.Security.OriginProtectionMode))
+		hasCDNRules := len(siteCfg.Security.AllowedCDNProviders) > 0 && mode != "disabled"
 		hasCIDRRules := len(siteCfg.Security.AllowedCIDRs) > 0
 
 		if !hasCDNRules && !hasCIDRRules {
@@ -106,7 +107,22 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		} else {
 			// 优先检查 CDN 提供商
 			if hasCDNRules {
-				if h.manager.IsIPAllowedByProviders(clientIP, siteCfg.Security.AllowedCDNProviders) {
+				maxStaleness := func(provider string) time.Duration {
+					if siteCfg.Security.CDNProviderSettings != nil {
+						if settings, ok := siteCfg.Security.CDNProviderSettings[provider]; ok {
+							if settings.MaxStalenessSeconds > 0 {
+								return time.Duration(settings.MaxStalenessSeconds) * time.Second
+							}
+							interval := time.Hour
+							if settings.RefreshIntervalSeconds > 0 {
+								interval = time.Duration(settings.RefreshIntervalSeconds) * time.Second
+							}
+							return interval * 3
+						}
+					}
+					return 3 * time.Hour
+				}
+				if siteID != "" && h.manager.IsIPAllowedBySiteProviders(siteID, clientIP, siteCfg.Security.AllowedCDNProviders, maxStaleness) {
 					allowed = true
 				} else {
 					denialReason = "cdn source check failed"

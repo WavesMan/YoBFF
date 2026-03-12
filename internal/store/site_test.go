@@ -40,12 +40,12 @@ func TestStore_SiteLifecycle(t *testing.T) {
 	// 空配置不应报错，返回零值
 
 	// 4. 更新配置
-	newCfg := config.Config{
+	cfgToSave := config.Config{
 		Security: config.SecurityConfig{
-			BlockPageHTML: "<html>blocked</html>",
+			AllowedCIDRs: []string{"127.0.0.1/32"},
 		},
 	}
-	version, err := s.UpdateSiteConfig(created.ID, newCfg, "admin", "test")
+	version, err := s.UpdateSiteConfig(created.ID, cfgToSave, "admin", "test")
 	if err != nil {
 		t.Fatalf("更新配置失败: %v", err)
 	}
@@ -58,7 +58,7 @@ func TestStore_SiteLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("再次查询失败: %v", err)
 	}
-	if loadedCfg.Security.BlockPageHTML != "<html>blocked</html>" {
+	if len(loadedCfg.Security.AllowedCIDRs) != 1 || loadedCfg.Security.AllowedCIDRs[0] != "127.0.0.1/32" {
 		t.Errorf("配置未生效: got %v", loadedCfg)
 	}
 }
@@ -260,7 +260,7 @@ func TestStore_SiteVersionDeleteAndSiteLogs(t *testing.T) {
 	}
 
 	version, err := s.UpdateSiteConfig(site.ID, config.Config{
-		Security: config.SecurityConfig{BlockPageHTML: "<html>ok</html>"},
+		Security: config.SecurityConfig{AllowedCIDRs: []string{"127.0.0.1/32"}},
 	}, "tester", "manual")
 	if err != nil {
 		t.Fatalf("更新配置失败: %v", err)

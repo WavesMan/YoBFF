@@ -175,6 +175,8 @@ func (s *Server) siteRouter(w http.ResponseWriter, r *http.Request) {
 		s.routeSiteConfig(w, r, siteID, parts[2:])
 	case "log":
 		s.routeSiteLog(w, r, siteID, parts[2:])
+	case "cdn":
+		s.routeSiteCDN(w, r, siteID, parts[2:])
 	default:
 		writeError(w, http.StatusNotFound, "not_found", "not found", r)
 	}

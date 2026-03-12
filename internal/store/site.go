@@ -137,6 +137,12 @@ func (s *Store) DeleteSite(siteID string) (Site, error) {
 	if _, err = tx.Exec(`DELETE FROM site_versions WHERE site_id = ?`, siteID); err != nil {
 		return Site{}, err
 	}
+	if _, err = tx.Exec(`DELETE FROM site_cdn_origin_snapshots WHERE site_id = ?`, siteID); err != nil {
+		return Site{}, err
+	}
+	if _, err = tx.Exec(`DELETE FROM site_cdn_origin_status WHERE site_id = ?`, siteID); err != nil {
+		return Site{}, err
+	}
 	if _, err = tx.Exec(`DELETE FROM site_log_streams WHERE site_id = ?`, siteID); err != nil {
 		return Site{}, err
 	}

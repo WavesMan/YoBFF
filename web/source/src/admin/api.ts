@@ -23,6 +23,9 @@ import type {
   SiteLogKind,
   SiteLogStream,
   SiteUpdateRequest,
+  SiteCDNOriginRefreshRequest,
+  SiteCDNOriginRefreshResponse,
+  SiteCDNOriginStatusListResponse,
   SSLCertificate,
 } from './types'
 
@@ -79,7 +82,9 @@ export function normalizeConfig(config?: Config | null): Config {
     security: {
       allowedCidrs: config?.security?.allowedCidrs ?? [],
       trustedProxyCidrs: config?.security?.trustedProxyCidrs ?? [],
-      blockPageHtml: config?.security?.blockPageHtml ?? '',
+      allowedCdnProviders: config?.security?.allowedCdnProviders ?? [],
+      cdnProviderSettings: config?.security?.cdnProviderSettings ?? {},
+      originProtectionMode: config?.security?.originProtectionMode,
       enableHsts: config?.security?.enableHsts ?? false,
     },
     routing: {
@@ -265,6 +270,45 @@ export async function updateSiteConfig(token: string, id: string, config: Config
     body: JSON.stringify(config),
     headers: { 'X-Operator': operator },
   }, token)
+}
+
+export async function fetchSiteCDNOriginStatus(token: string, id: string) {
+  try {
+    return await apiRequest<SiteCDNOriginStatusListResponse>(`${API_BASE}/sites/${id}/cdn/origin/status`, {}, token)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : ''
+    if (message.includes('[error_code=not_found]') && API_BASE.startsWith('/admin')) {
+      const altBase = API_BASE.replace(/^\/admin/, '')
+      return apiRequest<SiteCDNOriginStatusListResponse>(`${altBase}/sites/${id}/cdn/origin/status`, {}, token)
+    }
+    throw err
+  }
+}
+
+export async function refreshSiteCDNOrigin(
+  token: string,
+  id: string,
+  payload: SiteCDNOriginRefreshRequest,
+  operator: string
+) {
+  try {
+    return await apiRequest<SiteCDNOriginRefreshResponse>(`${API_BASE}/sites/${id}/cdn/origin/refresh`, {
+      method: 'POST',
+      body: JSON.stringify(payload ?? {}),
+      headers: { 'X-Operator': operator },
+    }, token)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : ''
+    if (message.includes('[error_code=not_found]') && API_BASE.startsWith('/admin')) {
+      const altBase = API_BASE.replace(/^\/admin/, '')
+      return apiRequest<SiteCDNOriginRefreshResponse>(`${altBase}/sites/${id}/cdn/origin/refresh`, {
+        method: 'POST',
+        body: JSON.stringify(payload ?? {}),
+        headers: { 'X-Operator': operator },
+      }, token)
+    }
+    throw err
+  }
 }
 
 export async function fetchSiteVersions(token: string, id: string, limit = 20) {

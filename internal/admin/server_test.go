@@ -264,7 +264,7 @@ func TestServerHandler_ConfigGetPut(t *testing.T) {
 		t.Fatalf("GET 状态码不匹配: got=%d", getRec.Result().StatusCode)
 	}
 
-	putBody := []byte(`{"dataPlane":{"httpListenAddr":":18080"},"security":{"blockPageHtml":"<html/>"},"routing":{"defaultUpstream":"http://127.0.0.1:18080"}}`)
+	putBody := []byte(`{"dataPlane":{"httpListenAddr":":18080"},"security":{"enableHsts":false},"routing":{"defaultUpstream":"http://127.0.0.1:18080"}}`)
 	putReq := httptest.NewRequest(http.MethodPut, "http://example.com/api/v1/config", bytes.NewReader(putBody))
 	putReq.RemoteAddr = "127.0.0.1:1234"
 	putReq.Header.Set("Authorization", "Bearer token")
@@ -289,7 +289,7 @@ func TestServerHandler_Reload(t *testing.T) {
 	cfgV1 := `{
   "dataPlane": { "httpListenAddr": ":8080", "httpsListenAddr": ":8443", "enableHttps": false },
   "controlPlane": { "adminListenAddr": ":9090" },
-  "security": { "allowedCidrs": [], "blockPageHtml": "<html/>", "enableHsts": false },
+  "security": { "allowedCidrs": [], "enableHsts": false },
   "routing": { "defaultUpstream": "http://127.0.0.1:18080", "domains": [] },
   "certificates": []
 }`
@@ -308,7 +308,7 @@ func TestServerHandler_Reload(t *testing.T) {
 	cfgV2 := `{
   "dataPlane": { "httpListenAddr": ":18080", "httpsListenAddr": ":8443", "enableHttps": false },
   "controlPlane": { "adminListenAddr": ":9090" },
-  "security": { "allowedCidrs": [], "blockPageHtml": "<html/>", "enableHsts": false },
+  "security": { "allowedCidrs": [], "enableHsts": false },
   "routing": { "defaultUpstream": "http://127.0.0.1:18080", "domains": [] },
   "certificates": []
 }`
@@ -497,7 +497,7 @@ func TestServerHandler_Config_Invalid(t *testing.T) {
 	srv := NewServer(manager, logRuntime, pipeline, nil)
 	handler := srv.Handler()
 
-	body := []byte(`{"security":{"allowedCidrs":["not-a-cidr"],"blockPageHtml":"<html/>"},"routing":{"defaultUpstream":"http://127.0.0.1:18080"}}`)
+	body := []byte(`{"security":{"allowedCidrs":["not-a-cidr"]},"routing":{"defaultUpstream":"http://127.0.0.1:18080"}}`)
 	req := httptest.NewRequest(http.MethodPut, "http://example.com/api/v1/config", bytes.NewReader(body))
 	req.RemoteAddr = "127.0.0.1:1234"
 	req.Header.Set("Authorization", "Bearer token")

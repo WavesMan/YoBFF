@@ -79,7 +79,6 @@ func ApplyEnvOverrides(cfg Config) Config {
 	cfg.ControlPlane.Auth.Username = EnvOrDefault("ADMIN_USERNAME", cfg.ControlPlane.Auth.Username)
 	cfg.ControlPlane.Auth.Password = EnvOrDefault("ADMIN_PASSWORD", cfg.ControlPlane.Auth.Password)
 	cfg.ControlPlane.Auth.Token = EnvOrDefault("ADMIN_API_TOKEN", cfg.ControlPlane.Auth.Token)
-	cfg.Security.BlockPageHTML = EnvOrDefault("BLOCK_PAGE_HTML", cfg.Security.BlockPageHTML)
 	cfg.Security.EnableHSTS = envBoolValue("HSTS_ENABLED", cfg.Security.EnableHSTS)
 	defaultUpstreamEnv := strings.TrimSpace(os.Getenv("DEFAULT_UPSTREAM"))
 	if defaultUpstreamEnv != "" {

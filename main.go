@@ -123,6 +123,9 @@ func run(
 		return fmt.Errorf("初始化配置存储失败: %w", err)
 	}
 
+	siteOriginSyncer := syncer.NewSiteOriginService(manager, configStore, logger)
+	siteOriginSyncer.Start(ctx)
+
 	dataHandler := gateway.NewHandler(manager, logPipeline, configStore)
 	adminSrv := admin.NewServer(manager, logRuntime, logPipeline, configStore)
 	uiHandler, err := buildUIHandler()

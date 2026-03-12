@@ -1,8 +1,13 @@
+import { useCallback, useEffect, useState } from 'react'
 import { FiChevronDown, FiChevronRight, FiX, FiCheck } from 'react-icons/fi'
 import { BsToggleOn, BsToggleOff } from 'react-icons/bs'
-import type { Config, Site, SSLCertificate } from '../../../../admin/types'
+import { fetchSiteCDNOriginStatus, refreshSiteCDNOrigin } from '../../../../admin/api'
+import type { Config, Site, SiteCDNOriginStatus, SSLCertificate } from '../../../../admin/types'
 
 type SecurityTabProps = {
+  token: string
+  operator: string
+  siteId: string
   site: Site | null
   config: Config
   updateConfig: (updater: (prev: Config) => Config) => void
@@ -14,6 +19,9 @@ type SecurityTabProps = {
 }
 
 export function SecurityTab({
+  token,
+  operator,
+  siteId,
   site,
   config,
   updateConfig,
@@ -23,6 +31,53 @@ export function SecurityTab({
   cdnExpanded,
   setCdnExpanded,
 }: SecurityTabProps) {
+  const [originStatus, setOriginStatus] = useState<Record<string, SiteCDNOriginStatus>>({})
+  const [originStatusError, setOriginStatusError] = useState('')
+  const [loadingOriginStatus, setLoadingOriginStatus] = useState(false)
+  const [refreshConfirmProvider, setRefreshConfirmProvider] = useState<string | null>(null)
+  const [refreshingProvider, setRefreshingProvider] = useState<string | null>(null)
+
+  const loadOriginStatus = useCallback(async () => {
+    if (!token || !siteId) return
+    setLoadingOriginStatus(true)
+    setOriginStatusError('')
+    try {
+      const data = await fetchSiteCDNOriginStatus(token, siteId)
+      const next: Record<string, SiteCDNOriginStatus> = {}
+      for (const item of data.items || []) {
+        const key = (item.provider || '').toLowerCase()
+        if (!key) continue
+        next[key] = item
+      }
+      setOriginStatus(next)
+    } catch (e) {
+      setOriginStatusError(e instanceof Error ? e.message : '加载回源 IP 同步状态失败')
+    } finally {
+      setLoadingOriginStatus(false)
+    }
+  }, [siteId, token])
+
+  const confirmRefresh = useCallback(async () => {
+    if (!refreshConfirmProvider) return
+    setRefreshingProvider(refreshConfirmProvider)
+    try {
+      await refreshSiteCDNOrigin(token, siteId, { providers: [refreshConfirmProvider] }, operator)
+      setRefreshConfirmProvider(null)
+      await loadOriginStatus()
+    } catch (e) {
+      setOriginStatusError(e instanceof Error ? e.message : '触发回源 IP 拉取失败')
+    } finally {
+      setRefreshingProvider(null)
+    }
+  }, [loadOriginStatus, operator, refreshConfirmProvider, siteId, token])
+
+  useEffect(() => {
+    if (!token || !siteId) return
+    loadOriginStatus()
+  }, [loadOriginStatus, siteId, token])
+
+  const originProtectionEnabled = config.security?.originProtectionMode !== 'disabled'
+
   return (
     <div className="panel">
       <h4>安全防护</h4>
@@ -145,14 +200,51 @@ export function SecurityTab({
         {cdnExpanded && (
           <div className="group-content">
             <div className="muted" style={{ marginBottom: '15px', fontSize: '13px' }}>
-              启用后，网关将仅允许来自所选 CDN 厂商的回源 IP 访问。请确保您已在对应 CDN 控制台配置回源策略。
-              对于需要鉴权回源的厂商（如 Cloudflare Authenticated Origin Pulls），请填写对应 API Key 或证书信息。
+              启用后，网关将仅允许来自所选 CDN 厂商的回源 IP 访问，并对其他来源返回 403。
+              本项目仅负责定时拉取回源 IP，云侧回源策略需您自行开启/关闭。
             </div>
+
+            <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '15px' }}>
+              <div
+                className="toggle-item"
+                onClick={() => {
+                  updateConfig(prev => ({
+                    ...prev,
+                    security: {
+                      ...prev.security,
+                      originProtectionMode: originProtectionEnabled ? 'disabled' : 'enforced'
+                    }
+                  }))
+                }}
+              >
+                {originProtectionEnabled ? (
+                  <BsToggleOn size={24} color="#10b981" />
+                ) : (
+                  <BsToggleOff size={24} color="#9ca3af" />
+                )}
+                <span>启用回源来源防护</span>
+              </div>
+
+              <button
+                className="button secondary"
+                onClick={loadOriginStatus}
+                disabled={loadingOriginStatus}
+              >
+                {loadingOriginStatus ? '刷新状态中...' : '刷新同步状态'}
+              </button>
+            </div>
+
+            {originStatusError && (
+              <div className="alert error" style={{ marginBottom: '15px' }}>
+                {originStatusError}
+              </div>
+            )}
             
             <div className="cdn-grid">
               {['aliyun', 'tencent', 'cloudflare'].map(provider => {
                 const isEnabled = (config.security?.allowedCdnProviders || []).includes(provider)
                 const settings = config.security?.cdnProviderSettings?.[provider] || {}
+                const status = originStatus[provider]
                 
                 return (
                   <div key={provider} className={`cdn-card ${isEnabled ? 'active' : ''}`}>
@@ -183,6 +275,54 @@ export function SecurityTab({
                     
                     {isEnabled && (
                       <div className="card-body">
+                        <div className="form-field small">
+                          <label>IPv4 URL</label>
+                          <input
+                            className="input small"
+                            placeholder="必填其一：ipv4Url / ipv6Url"
+                            value={settings.ipv4Url || ''}
+                            onChange={e => {
+                              const val = e.target.value
+                              updateConfig(prev => {
+                                const currentSettings = prev.security?.cdnProviderSettings || {}
+                                return {
+                                  ...prev,
+                                  security: {
+                                    ...prev.security,
+                                    cdnProviderSettings: {
+                                      ...currentSettings,
+                                      [provider]: { ...currentSettings[provider], ipv4Url: val }
+                                    }
+                                  }
+                                }
+                              })
+                            }}
+                          />
+                        </div>
+                        <div className="form-field small">
+                          <label>IPv6 URL</label>
+                          <input
+                            className="input small"
+                            placeholder="可选"
+                            value={settings.ipv6Url || ''}
+                            onChange={e => {
+                              const val = e.target.value
+                              updateConfig(prev => {
+                                const currentSettings = prev.security?.cdnProviderSettings || {}
+                                return {
+                                  ...prev,
+                                  security: {
+                                    ...prev.security,
+                                    cdnProviderSettings: {
+                                      ...currentSettings,
+                                      [provider]: { ...currentSettings[provider], ipv6Url: val }
+                                    }
+                                  }
+                                }
+                              })
+                            }}
+                          />
+                        </div>
                         <div className="form-field small">
                           <label>API Key / Token</label>
                           <input 
@@ -231,6 +371,81 @@ export function SecurityTab({
                             }}
                           />
                         </div>
+                        <div className="form-field small">
+                          <label>刷新间隔（秒）</label>
+                          <input
+                            className="input small"
+                            type="number"
+                            min={60}
+                            max={86400}
+                            step={60}
+                            placeholder="默认 3600"
+                            value={settings.refreshIntervalSeconds ? String(settings.refreshIntervalSeconds) : ''}
+                            onChange={e => {
+                              const raw = e.target.value
+                              const parsed = raw === '' ? 0 : Number.parseInt(raw, 10)
+                              const next = Number.isFinite(parsed) ? parsed : 0
+                              updateConfig(prev => {
+                                const currentSettings = prev.security?.cdnProviderSettings || {}
+                                return {
+                                  ...prev,
+                                  security: {
+                                    ...prev.security,
+                                    cdnProviderSettings: {
+                                      ...currentSettings,
+                                      [provider]: { ...currentSettings[provider], refreshIntervalSeconds: next }
+                                    }
+                                  }
+                                }
+                              })
+                            }}
+                          />
+                        </div>
+                        <div className="form-field small">
+                          <label>最大陈旧（秒）</label>
+                          <input
+                            className="input small"
+                            type="number"
+                            min={60}
+                            max={604800}
+                            step={60}
+                            placeholder="默认：刷新间隔 × 3"
+                            value={settings.maxStalenessSeconds ? String(settings.maxStalenessSeconds) : ''}
+                            onChange={e => {
+                              const raw = e.target.value
+                              const parsed = raw === '' ? 0 : Number.parseInt(raw, 10)
+                              const next = Number.isFinite(parsed) ? parsed : 0
+                              updateConfig(prev => {
+                                const currentSettings = prev.security?.cdnProviderSettings || {}
+                                return {
+                                  ...prev,
+                                  security: {
+                                    ...prev.security,
+                                    cdnProviderSettings: {
+                                      ...currentSettings,
+                                      [provider]: { ...currentSettings[provider], maxStalenessSeconds: next }
+                                    }
+                                  }
+                                }
+                              })
+                            }}
+                          />
+                        </div>
+
+                        <div style={{ marginTop: '10px' }}>
+                          <button
+                            className="button secondary"
+                            onClick={() => setRefreshConfirmProvider(provider)}
+                            disabled={refreshingProvider === provider}
+                          >
+                            {refreshingProvider === provider ? '拉取中...' : '立即拉取回源 IP'}
+                          </button>
+                        </div>
+
+                        <div className="muted" style={{ marginTop: '10px', fontSize: '12px' }}>
+                          最近尝试：{status?.last_attempt_at || '-'}，最近成功：{status?.last_success_at || '-'}，
+                          连续失败：{status?.consecutive_failures ?? 0}{status?.last_error ? `，错误：${status.last_error}` : ''}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -240,7 +455,7 @@ export function SecurityTab({
 
             <div style={{ marginTop: '20px', borderTop: '1px solid var(--border)', paddingTop: '20px' }}>
               <div className="form-field">
-                <label style={{ fontWeight: 600, marginBottom: '8px', display: 'block' }}>自定义 IP 白名单 (全局规则)</label>
+                <label style={{ fontWeight: 600, marginBottom: '8px', display: 'block' }}>自定义 IP 白名单（站点规则）</label>
                 <div className="muted" style={{ marginBottom: '10px', fontSize: '13px' }}>
                   在此处配置的 IP/CIDR 将作为额外规则放行（不受 CDN 限制影响）。
                   <br />
@@ -261,31 +476,44 @@ export function SecurityTab({
                 />
               </div>
             </div>
-
-            <div style={{ marginTop: '20px', borderTop: '1px solid var(--border)', paddingTop: '20px' }}>
-              <div className="form-field">
-                <label style={{ fontWeight: 600, marginBottom: '8px', display: 'block' }}>自定义拦截页面 (Block Page HTML)</label>
-                <div className="muted" style={{ marginBottom: '10px', fontSize: '13px' }}>
-                  当请求被安全策略拦截时显示的页面内容。支持 HTML。留空则使用默认拦截页面。
-                </div>
-                <textarea 
-                  className="textarea"
-                  rows={8}
-                  placeholder="<html>...</html>"
-                  value={config.security?.blockPageHtml || ''}
-                  onChange={e => updateConfig(prev => ({
-                    ...prev,
-                    security: { 
-                      ...prev.security, 
-                      blockPageHtml: e.target.value
-                    }
-                  }))}
-                />
-              </div>
-            </div>
           </div>
         )}
       </div>
+
+      {refreshConfirmProvider && (
+        <div
+          className="confirm-overlay"
+          onClick={() => refreshingProvider == null && setRefreshConfirmProvider(null)}
+        >
+          <div
+            className="confirm-dialog"
+            role="dialog"
+            aria-modal="true"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="confirm-title">确认拉取</div>
+            <div className="confirm-message">
+              确定要立即拉取 {refreshConfirmProvider.toUpperCase()} 的回源 IP 吗？拉取成功后会立即影响数据面放行判断。
+            </div>
+            <div className="confirm-actions">
+              <button
+                className="button secondary"
+                onClick={() => setRefreshConfirmProvider(null)}
+                disabled={refreshingProvider != null}
+              >
+                取消
+              </button>
+              <button
+                className="button danger"
+                onClick={confirmRefresh}
+                disabled={refreshingProvider != null}
+              >
+                {refreshingProvider != null ? '拉取中...' : '确定拉取'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
