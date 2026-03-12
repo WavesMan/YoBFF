@@ -20,6 +20,8 @@ import (
 
 var _ cdn.Provider = (*Provider)(nil)
 
+// Config 表示阿里云 ESA 回源 IP 拉取所需配置。
+// 说明：AccessKeySecret 属于敏感信息，仅用于请求签名，需由上层安全存储并避免回显。
 type Config struct {
 	AccessKeyID     string
 	AccessKeySecret string
@@ -27,6 +29,8 @@ type Config struct {
 	SiteID          string
 }
 
+// Provider 实现阿里云 ESA 回源 IP 拉取逻辑。
+// 说明：通过官方 OpenAPI 获取回源白名单 CIDR，用于网关侧按站点进行来源校验。
 type Provider struct {
 	config Config
 	client *http.Client
@@ -42,10 +46,14 @@ func NewProvider(cfg Config) *Provider {
 	}
 }
 
+// Name 返回提供商标识，用于路由与审计记录。
 func (p *Provider) Name() string {
 	return "aliyun"
 }
 
+// FetchCIDRs 拉取阿里云 ESA 回源白名单 CIDR 列表。
+// 返回：CIDR 列表（IPv4/IPv6 合并）。
+// 异常：配置缺失、签名计算失败、请求失败或响应解析失败时返回错误。
 func (p *Provider) FetchCIDRs(ctx context.Context) ([]string, error) {
 	accessKeyID := strings.TrimSpace(p.config.AccessKeyID)
 	accessKeySecret := strings.TrimSpace(p.config.AccessKeySecret)
@@ -155,6 +163,8 @@ func (p *Provider) FetchCIDRs(ctx context.Context) ([]string, error) {
 	return append(ipv4, ipv6...), nil
 }
 
+// normalizeEndpoint 规范化并校验阿里云 API endpoint。
+// 规则：为空时使用官方默认地址；未包含 scheme 时默认补齐 https；仅保留 scheme 与 host。
 func normalizeEndpoint(raw string) (*url.URL, error) {
 	value := strings.TrimSpace(raw)
 	if value == "" {
@@ -176,6 +186,7 @@ func normalizeEndpoint(raw string) (*url.URL, error) {
 	return parsed, nil
 }
 
+// buildCanonicalQuery 构造签名所需的 canonical query string。
 func buildCanonicalQuery(values url.Values) string {
 	if len(values) == 0 {
 		return ""
@@ -200,6 +211,7 @@ func buildCanonicalQuery(values url.Values) string {
 	return strings.Join(parts, "&")
 }
 
+// buildCanonicalHeaders 构造签名所需的 canonical headers 与 signed headers 列表。
 func buildCanonicalHeaders(headers map[string]string) (signedHeaders string, canonicalHeaders string) {
 	keys := make([]string, 0, len(headers))
 	for key := range headers {
@@ -224,17 +236,20 @@ func buildCanonicalHeaders(headers map[string]string) (signedHeaders string, can
 	return strings.Join(signed, ";"), canonical.String()
 }
 
+// sha256Hex 计算 payload 的 SHA256 十六进制哈希，用于签名与防篡改校验。
 func sha256Hex(payload []byte) string {
 	sum := sha256.Sum256(payload)
 	return hex.EncodeToString(sum[:])
 }
 
+// hmacSHA256Hex 计算 HMAC-SHA256 十六进制签名。
 func hmacSHA256Hex(key []byte, msg []byte) string {
 	mac := hmac.New(sha256.New, key)
 	_, _ = mac.Write(msg)
 	return hex.EncodeToString(mac.Sum(nil))
 }
 
+// randomHex 生成指定字节数的随机数并以十六进制编码，用于请求 nonce。
 func randomHex(n int) (string, error) {
 	buf := make([]byte, n)
 	if _, err := rand.Read(buf); err != nil {
@@ -243,14 +258,17 @@ func randomHex(n int) (string, error) {
 	return hex.EncodeToString(buf), nil
 }
 
+// errorsMissingConfig 返回配置缺失错误，用于统一错误语义与前端提示。
 func errorsMissingConfig() error {
 	return fmt.Errorf("缺少必要配置: apiKey/secretKey/option(siteId)")
 }
 
+// errorsMissingEndpoint 返回 endpoint 缺失错误。
 func errorsMissingEndpoint() error {
 	return fmt.Errorf("endpoint 不能为空")
 }
 
+// filterCIDRs 过滤空行与注释行，避免将无效条目写入放行规则。
 func filterCIDRs(items []string) []string {
 	out := make([]string, 0, len(items))
 	for _, item := range items {

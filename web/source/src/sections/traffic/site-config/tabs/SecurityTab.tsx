@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { FiChevronDown, FiChevronRight, FiX, FiCheck } from 'react-icons/fi'
 import { BsToggleOn, BsToggleOff } from 'react-icons/bs'
 import { fetchSiteCDNOriginStatus, refreshSiteCDNOrigin } from '../../../../admin/api'
-import type { Config, Site, SiteCDNOriginStatus, SSLCertificate } from '../../../../admin/types'
+import type { CDNProviderSetting, Config, Site, SiteCDNOriginStatus, SSLCertificate } from '../../../../admin/types'
 
 type SecurityTabProps = {
   token: string
@@ -36,6 +36,7 @@ export function SecurityTab({
   const [loadingOriginStatus, setLoadingOriginStatus] = useState(false)
   const [refreshConfirmProvider, setRefreshConfirmProvider] = useState<string | null>(null)
   const [refreshingProvider, setRefreshingProvider] = useState<string | null>(null)
+  const [expandedProviders, setExpandedProviders] = useState<Record<string, boolean>>({})
 
   const loadOriginStatus = useCallback(async () => {
     if (!token || !siteId) return
@@ -77,6 +78,46 @@ export function SecurityTab({
   }, [loadOriginStatus, siteId, token])
 
   const originProtectionEnabled = config.security?.originProtectionMode !== 'disabled'
+  const allowedProviders = useMemo(() => config.security?.allowedCdnProviders || [], [config.security?.allowedCdnProviders])
+
+  useEffect(() => {
+    if (!cdnExpanded) return
+    setExpandedProviders(prev => {
+      const next = { ...prev }
+      for (const provider of allowedProviders) {
+        if (next[provider] == null) next[provider] = true
+      }
+      return next
+    })
+  }, [allowedProviders, cdnExpanded])
+
+  const getEnableError = useCallback((provider: string, settings: CDNProviderSetting) => {
+    if (provider === 'cloudflare') {
+      const ipv4 = String(settings.ipv4Url || '').trim()
+      const ipv6 = String(settings.ipv6Url || '').trim()
+      if (!ipv4 && !ipv6) return '需要填写 ipv4Url 或 ipv6Url 才能启用'
+      return ''
+    }
+    if (provider === 'aliyun') {
+      const accessKeyID = String(settings.apiKey || '').trim()
+      const accessKeySecret = String(settings.secretKey || '').trim()
+      const siteIdText = String(settings.option || '').trim()
+      if (!accessKeyID) return '需要填写 AccessKeyId 才能启用'
+      if (!accessKeySecret) return '需要填写 AccessKeySecret 才能启用'
+      if (!siteIdText) return '需要填写 ESA SiteId 才能启用'
+      return ''
+    }
+    if (provider === 'tencent') {
+      const secretID = String(settings.apiKey || '').trim()
+      const secretKey = String(settings.secretKey || '').trim()
+      const zoneId = String(settings.zoneId || '').trim()
+      if (!secretID) return '需要填写 SecretId 才能启用'
+      if (!secretKey) return '需要填写 SecretKey 才能启用'
+      if (!zoneId) return '需要填写 TEO ZoneId 才能启用'
+      return ''
+    }
+    return ''
+  }, [])
 
   return (
     <div className="panel">
@@ -242,23 +283,45 @@ export function SecurityTab({
             
             <div className="cdn-grid">
               {['aliyun', 'tencent', 'cloudflare'].map(provider => {
-                const isEnabled = (config.security?.allowedCdnProviders || []).includes(provider)
-                const settings = config.security?.cdnProviderSettings?.[provider] || {}
+                const isEnabled = allowedProviders.includes(provider)
+                const settings = config.security?.cdnProviderSettings?.[provider] || ({} as CDNProviderSetting)
                 const status = originStatus[provider]
+                const isExpanded = !!expandedProviders[provider]
+                const enableError = getEnableError(provider, settings)
+                const canEnable = !enableError
                 
                 return (
                   <div key={provider} className={`cdn-card ${isEnabled ? 'active' : ''}`}>
-                    <div className="card-header">
-                      <span className="provider-name">{provider.toUpperCase()}</span>
-                      <div 
+                    <div
+                      className="card-header"
+                      onClick={() => setExpandedProviders(prev => ({ ...prev, [provider]: !prev[provider] }))}
+                      onKeyDown={(event) => {
+                        if (event.key !== 'Enter' && event.key !== ' ') return
+                        event.preventDefault()
+                        setExpandedProviders(prev => ({ ...prev, [provider]: !prev[provider] }))
+                      }}
+                      role="button"
+                      tabIndex={0}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        {isExpanded ? <FiChevronDown /> : <FiChevronRight />}
+                        <span className="provider-name">{provider.toUpperCase()}</span>
+                      </div>
+                      <button
+                        type="button"
                         className="toggle-btn"
+                        title={!isEnabled && !canEnable ? enableError : ''}
+                        disabled={!isEnabled && !canEnable}
                         onClick={(e) => {
                           e.stopPropagation()
-                          const current = config.security?.allowedCdnProviders || []
+                          if (!isEnabled && !canEnable) {
+                            setExpandedProviders(prev => ({ ...prev, [provider]: true }))
+                            return
+                          }
+                          const current = allowedProviders
                           const next = isEnabled
                             ? current.filter(p => p !== provider)
                             : [...current, provider]
-                          
                           updateConfig(prev => ({
                             ...prev,
                             security: { ...prev.security, allowedCdnProviders: next }
@@ -268,13 +331,18 @@ export function SecurityTab({
                         {isEnabled ? (
                           <BsToggleOn size={24} color="#10b981" />
                         ) : (
-                          <BsToggleOff size={24} color="#9ca3af" />
+                          <BsToggleOff size={24} color={!canEnable ? '#d1d5db' : '#9ca3af'} />
                         )}
-                      </div>
+                      </button>
                     </div>
                     
-                    {isEnabled && (
+                    {isExpanded && (
                       <div className="card-body">
+                        {!isEnabled && enableError && (
+                          <div className="muted" style={{ marginBottom: '10px', fontSize: '12px' }}>
+                            {enableError}
+                          </div>
+                        )}
                         {provider === 'cloudflare' && (
                           <>
                             <div className="form-field small">
@@ -596,7 +664,7 @@ export function SecurityTab({
                           <button
                             className="button secondary"
                             onClick={() => setRefreshConfirmProvider(provider)}
-                            disabled={refreshingProvider === provider}
+                            disabled={!isEnabled || refreshingProvider === provider}
                           >
                             {refreshingProvider === provider ? '拉取中...' : '立即拉取回源 IP'}
                           </button>

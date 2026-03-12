@@ -18,6 +18,8 @@ import (
 
 var _ cdn.Provider = (*Provider)(nil)
 
+// Config 表示腾讯云 TEO 回源 IP 拉取所需配置。
+// 说明：SecretKey 属于敏感信息，仅用于请求签名，需由上层安全存储并避免回显。
 type Config struct {
 	SecretID  string
 	SecretKey string
@@ -25,6 +27,8 @@ type Config struct {
 	Endpoint  string
 }
 
+// Provider 实现腾讯云 TEO 回源 IP 拉取逻辑。
+// 说明：通过官方 OpenAPI 获取回源白名单 CIDR，用于网关侧按站点进行来源校验。
 type Provider struct {
 	config Config
 	client *http.Client
@@ -40,10 +44,14 @@ func NewProvider(cfg Config) *Provider {
 	}
 }
 
+// Name 返回提供商标识，用于路由与审计记录。
 func (p *Provider) Name() string {
 	return "tencent"
 }
 
+// FetchCIDRs 拉取腾讯云 TEO 回源白名单 CIDR 列表。
+// 返回：CIDR 列表（IPv4/IPv6 合并）。
+// 异常：配置缺失、签名计算失败、请求失败或响应解析失败时返回错误。
 func (p *Provider) FetchCIDRs(ctx context.Context) ([]string, error) {
 	secretID := strings.TrimSpace(p.config.SecretID)
 	secretKey := strings.TrimSpace(p.config.SecretKey)
@@ -171,6 +179,8 @@ func (p *Provider) FetchCIDRs(ctx context.Context) ([]string, error) {
 	return append(ipv4, ipv6...), nil
 }
 
+// normalizeEndpoint 规范化并校验腾讯云 API endpoint。
+// 规则：为空时使用官方默认地址；仅保留 scheme/host，固定 path 为 "/"。
 func normalizeEndpoint(raw string) (*url.URL, error) {
 	value := strings.TrimSpace(raw)
 	if value == "" {
@@ -189,17 +199,20 @@ func normalizeEndpoint(raw string) (*url.URL, error) {
 	return parsed, nil
 }
 
+// sha256Hex 计算 payload 的 SHA256 十六进制哈希，用于签名与防篡改校验。
 func sha256Hex(payload []byte) string {
 	sum := sha256.Sum256(payload)
 	return hex.EncodeToString(sum[:])
 }
 
+// hmacSHA256 计算 HMAC-SHA256 摘要，用于 TC3 请求签名派生。
 func hmacSHA256(key []byte, msg []byte) []byte {
 	mac := hmac.New(sha256.New, key)
 	_, _ = mac.Write(msg)
 	return mac.Sum(nil)
 }
 
+// filterCIDRs 过滤空行与注释行，避免将无效条目写入放行规则。
 func filterCIDRs(items []string) []string {
 	out := make([]string, 0, len(items))
 	for _, item := range items {
