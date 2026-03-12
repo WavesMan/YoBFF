@@ -280,6 +280,8 @@ func (s *Server) siteCDNOriginRefresh(w http.ResponseWriter, r *http.Request, si
 	})
 }
 
+// buildCDNProvider 根据站点配置构建 CDN 回源 IP 拉取器。
+// 说明：阿里云/腾讯云使用官方 API 方式拉取，SecretKey 由存储层解密后传入，不在接口中回显。
 func buildCDNProvider(provider string, settings config.CDNProviderSetting) (cdn.Provider, error) {
 	switch provider {
 	case "cloudflare":
@@ -289,13 +291,17 @@ func buildCDNProvider(provider string, settings config.CDNProviderSetting) (cdn.
 		}), nil
 	case "aliyun":
 		return aliyun.NewProvider(aliyun.Config{
-			IPv4URL: strings.TrimSpace(settings.IPv4URL),
-			IPv6URL: strings.TrimSpace(settings.IPv6URL),
+			AccessKeyID:     strings.TrimSpace(settings.APIKey),
+			AccessKeySecret: strings.TrimSpace(settings.SecretKey),
+			Endpoint:        strings.TrimSpace(settings.Endpoint),
+			SiteID:          strings.TrimSpace(settings.Option),
 		}), nil
 	case "tencent":
 		return tencent.NewProvider(tencent.Config{
-			IPv4URL: strings.TrimSpace(settings.IPv4URL),
-			IPv6URL: strings.TrimSpace(settings.IPv6URL),
+			SecretID:  strings.TrimSpace(settings.APIKey),
+			SecretKey: strings.TrimSpace(settings.SecretKey),
+			ZoneID:    strings.TrimSpace(settings.ZoneID),
+			Endpoint:  strings.TrimSpace(settings.Endpoint),
 		}), nil
 	default:
 		return nil, errors.New("cdn provider is not supported")

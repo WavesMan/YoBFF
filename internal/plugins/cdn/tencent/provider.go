@@ -1,12 +1,15 @@
 package tencent
 
 import (
-	"bufio"
+	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -16,8 +19,10 @@ import (
 var _ cdn.Provider = (*Provider)(nil)
 
 type Config struct {
-	IPv4URL string
-	IPv6URL string
+	SecretID  string
+	SecretKey string
+	ZoneID    string
+	Endpoint  string
 }
 
 type Provider struct {
@@ -40,59 +45,159 @@ func (p *Provider) Name() string {
 }
 
 func (p *Provider) FetchCIDRs(ctx context.Context) ([]string, error) {
-	ipv4, err := fetchCIDRsFromURL(ctx, p.client, p.config.IPv4URL)
-	if err != nil {
-		return nil, fmt.Errorf("fetch ipv4 failed: %w", err)
+	secretID := strings.TrimSpace(p.config.SecretID)
+	secretKey := strings.TrimSpace(p.config.SecretKey)
+	zoneID := strings.TrimSpace(p.config.ZoneID)
+	if secretID == "" || secretKey == "" || zoneID == "" {
+		return nil, fmt.Errorf("缺少必要配置: apiKey/secretKey/zoneId")
 	}
-	ipv6, err := fetchCIDRsFromURL(ctx, p.client, p.config.IPv6URL)
-	if err != nil {
-		return nil, fmt.Errorf("fetch ipv6 failed: %w", err)
-	}
-	return append(ipv4, ipv6...), nil
-}
 
-func fetchCIDRsFromURL(ctx context.Context, client *http.Client, url string) ([]string, error) {
-	value := strings.TrimSpace(url)
-	if value == "" {
-		return nil, nil
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, value, nil)
+	endpoint, err := normalizeEndpoint(p.config.Endpoint)
 	if err != nil {
 		return nil, err
 	}
-	resp, err := client.Do(req)
+
+	action := "DescribeOriginACL"
+	version := "2022-09-01"
+	service := "teo"
+	method := http.MethodPost
+	contentType := "application/json; charset=utf-8"
+
+	bodyPayload, err := json.Marshal(map[string]string{"ZoneId": zoneID})
+	if err != nil {
+		return nil, err
+	}
+
+	now := time.Now().UTC()
+	timestamp := now.Unix()
+	date := now.Format("2006-01-02")
+	payloadHash := sha256Hex(bodyPayload)
+	canonicalHeaders := "content-type:" + contentType + "\n" + "host:" + endpoint.Host + "\n"
+	signedHeaders := "content-type;host"
+	canonicalRequest := strings.Join([]string{
+		method,
+		"/",
+		"",
+		canonicalHeaders,
+		signedHeaders,
+		payloadHash,
+	}, "\n")
+
+	algorithm := "TC3-HMAC-SHA256"
+	credentialScope := date + "/" + service + "/tc3_request"
+	stringToSign := strings.Join([]string{
+		algorithm,
+		fmt.Sprintf("%d", timestamp),
+		credentialScope,
+		sha256Hex([]byte(canonicalRequest)),
+	}, "\n")
+
+	secretDate := hmacSHA256([]byte("TC3"+secretKey), []byte(date))
+	secretService := hmacSHA256(secretDate, []byte(service))
+	secretSigning := hmacSHA256(secretService, []byte("tc3_request"))
+	signature := hex.EncodeToString(hmacSHA256(secretSigning, []byte(stringToSign)))
+
+	authorization := fmt.Sprintf(
+		"%s Credential=%s/%s, SignedHeaders=%s, Signature=%s",
+		algorithm,
+		secretID,
+		credentialScope,
+		signedHeaders,
+		signature,
+	)
+
+	req, err := http.NewRequestWithContext(ctx, method, endpoint.String(), bytes.NewReader(bodyPayload))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", contentType)
+	req.Header.Set("Host", endpoint.Host)
+	req.Header.Set("X-TC-Action", action)
+	req.Header.Set("X-TC-Version", version)
+	req.Header.Set("X-TC-Timestamp", fmt.Sprintf("%d", timestamp))
+	req.Header.Set("Authorization", authorization)
+
+	resp, err := p.client.Do(req)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
-
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	var jsonCIDRs []string
-	if err := json.Unmarshal(body, &jsonCIDRs); err == nil {
-		return filterCIDRs(jsonCIDRs), nil
-	}
-
-	var cidrs []string
-	scanner := bufio.NewScanner(strings.NewReader(string(body)))
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
+		var body struct {
+			Response struct {
+				Error struct {
+					Code    string `json:"Code"`
+					Message string `json:"Message"`
+				} `json:"Error"`
+			} `json:"Response"`
 		}
-		cidrs = append(cidrs, line)
+		_ = json.NewDecoder(resp.Body).Decode(&body)
+		code := strings.TrimSpace(body.Response.Error.Code)
+		message := strings.TrimSpace(body.Response.Error.Message)
+		if code != "" || message != "" {
+			return nil, fmt.Errorf("请求失败: status=%d code=%s message=%s", resp.StatusCode, code, message)
+		}
+		return nil, fmt.Errorf("请求失败: status=%d", resp.StatusCode)
 	}
-	if err := scanner.Err(); err != nil {
+
+	var result struct {
+		Response struct {
+			OriginACLInfo struct {
+				CurrentOriginACL struct {
+					EntireAddresses struct {
+						IPv4 []string `json:"IPv4"`
+						IPv6 []string `json:"IPv6"`
+					} `json:"EntireAddresses"`
+				} `json:"CurrentOriginACL"`
+				NextOriginACL struct {
+					EntireAddresses struct {
+						IPv4 []string `json:"IPv4"`
+						IPv6 []string `json:"IPv6"`
+					} `json:"EntireAddresses"`
+				} `json:"NextOriginACL"`
+			} `json:"OriginACLInfo"`
+		} `json:"Response"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, err
 	}
-	return cidrs, nil
+
+	ipv4 := filterCIDRs(result.Response.OriginACLInfo.NextOriginACL.EntireAddresses.IPv4)
+	ipv6 := filterCIDRs(result.Response.OriginACLInfo.NextOriginACL.EntireAddresses.IPv6)
+	if len(ipv4) == 0 && len(ipv6) == 0 {
+		ipv4 = filterCIDRs(result.Response.OriginACLInfo.CurrentOriginACL.EntireAddresses.IPv4)
+		ipv6 = filterCIDRs(result.Response.OriginACLInfo.CurrentOriginACL.EntireAddresses.IPv6)
+	}
+	return append(ipv4, ipv6...), nil
+}
+
+func normalizeEndpoint(raw string) (*url.URL, error) {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		value = "https://teo.tencentcloudapi.com"
+	}
+	parsed, err := url.Parse(value)
+	if err != nil {
+		return nil, fmt.Errorf("endpoint 非法: %w", err)
+	}
+	if parsed.Scheme == "" || parsed.Host == "" {
+		return nil, fmt.Errorf("endpoint 非法")
+	}
+	parsed.Path = "/"
+	parsed.RawQuery = ""
+	parsed.Fragment = ""
+	return parsed, nil
+}
+
+func sha256Hex(payload []byte) string {
+	sum := sha256.Sum256(payload)
+	return hex.EncodeToString(sum[:])
+}
+
+func hmacSHA256(key []byte, msg []byte) []byte {
+	mac := hmac.New(sha256.New, key)
+	_, _ = mac.Write(msg)
+	return mac.Sum(nil)
 }
 
 func filterCIDRs(items []string) []string {
@@ -106,4 +211,3 @@ func filterCIDRs(items []string) []string {
 	}
 	return out
 }
-

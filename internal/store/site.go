@@ -179,7 +179,7 @@ func (s *Store) GetSite(siteID string) (Site, error) {
 
 // GetSiteConfigByHostname 按站点域名读取当前配置，用于数据面按站点执行独立安全策略。
 // 参数：hostname 为请求域名。
-// 返回：站点配置与错误。
+// 返回：站点配置（包含已解密的 SecretKey，供内部任务调用第三方 API 使用）。
 // 异常：站点不存在时返回 ErrSiteNotFound，数据库异常时返回对应错误。
 func (s *Store) GetSiteConfigByHostname(hostname string) (config.Config, error) {
 	if s == nil || s.db == nil {
@@ -207,7 +207,7 @@ func (s *Store) GetSiteConfigByHostname(hostname string) (config.Config, error) 
 	if err := json.Unmarshal([]byte(payload), &cfg); err != nil {
 		return config.Config{}, err
 	}
-	return cfg, nil
+	return applyDecryptedCDNSecrets(cfg), nil
 }
 
 // ListSites 获取站点列表，用于 hostname/IP 分类视图快速呈现。
@@ -256,7 +256,7 @@ func (s *Store) ListSites(filter SiteFilter) ([]Site, error) {
 
 // GetSiteConfig 获取站点当前配置，用于站点配置预览与差异基准。
 // 参数：siteID 为站点标识。
-// 返回：站点配置。
+// 返回：站点配置（包含已解密的 SecretKey，供内部任务调用第三方 API 使用）。
 // 异常：站点不存在或配置解析失败时返回错误。
 func (s *Store) GetSiteConfig(siteID string) (config.Config, error) {
 	if s == nil || s.db == nil {
@@ -280,13 +280,13 @@ func (s *Store) GetSiteConfig(siteID string) (config.Config, error) {
 	if err := json.Unmarshal([]byte(payload), &cfg); err != nil {
 		return config.Config{}, err
 	}
-	return cfg, nil
+	return applyDecryptedCDNSecrets(cfg), nil
 }
 
 // UpdateSiteConfig 更新站点配置并生成版本快照，用于回滚与审计追踪。
 // 参数：siteID 为站点标识，cfg 为站点新配置，operator 为操作人，source 为变更来源。
 // 返回：新增版本信息。
-// 异常：站点不存在、持久化失败或事务异常时返回错误。
+// 异常：站点不存在、密钥加密失败、持久化失败或事务异常时返回错误。
 func (s *Store) UpdateSiteConfig(siteID string, cfg config.Config, operator string, source string) (ConfigVersion, error) {
 	if s == nil || s.db == nil {
 		return ConfigVersion{}, errors.New("db not ready")
@@ -294,15 +294,27 @@ func (s *Store) UpdateSiteConfig(siteID string, cfg config.Config, operator stri
 	if siteID == "" {
 		return ConfigVersion{}, errors.New("site id is empty")
 	}
-	checkRow := s.db.QueryRow(`SELECT id FROM sites WHERE id = ?`, siteID)
-	var siteKey string
-	if err := checkRow.Scan(&siteKey); err != nil {
+	var existingPayload string
+	if err := s.db.QueryRow(`SELECT config_json FROM sites WHERE id = ?`, siteID).Scan(&existingPayload); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return ConfigVersion{}, ErrSiteNotFound
 		}
 		return ConfigVersion{}, err
 	}
-	payload, err := json.Marshal(cfg)
+
+	existingCfg := config.Config{}
+	if strings.TrimSpace(existingPayload) != "" {
+		if err := json.Unmarshal([]byte(existingPayload), &existingCfg); err != nil {
+			return ConfigVersion{}, err
+		}
+	}
+
+	mergedCfg, err := mergeAndEncryptCDNSecrets(existingCfg, cfg)
+	if err != nil {
+		return ConfigVersion{}, err
+	}
+
+	payload, err := json.Marshal(mergedCfg)
 	if err != nil {
 		return ConfigVersion{}, err
 	}
@@ -401,7 +413,7 @@ func (s *Store) ListSiteVersions(siteID string, limit int) ([]ConfigVersion, err
 
 // GetSiteVersionConfig 获取站点指定版本配置，用于版本预览。
 // 参数：siteID 为站点标识，versionID 为版本标识。
-// 返回：版本配置。
+// 返回：版本配置（包含已解密的 SecretKey，供内部任务调用第三方 API 使用）。
 // 异常：版本不存在或解析失败时返回错误。
 func (s *Store) GetSiteVersionConfig(siteID string, versionID string) (config.Config, error) {
 	if s == nil || s.db == nil {
@@ -423,7 +435,7 @@ func (s *Store) GetSiteVersionConfig(siteID string, versionID string) (config.Co
 	if err := json.Unmarshal([]byte(payload), &cfg); err != nil {
 		return config.Config{}, err
 	}
-	return cfg, nil
+	return applyDecryptedCDNSecrets(cfg), nil
 }
 
 // RollbackSiteVersion 回滚站点配置版本并生成新的版本快照，用于审计与回退链路闭环。

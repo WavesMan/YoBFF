@@ -471,6 +471,8 @@ func jitterDuration(base time.Duration, ratio float64, random *rand.Rand) time.D
 	return next
 }
 
+// buildOriginProvider 根据站点配置构建回源 IP 提供商实现，用于同步任务按站点拉取 CIDR 列表。
+// 说明：阿里云/腾讯云使用官方 API 拉取，SecretKey 由存储层解密后传入，不在管理接口中回显。
 func buildOriginProvider(provider string, settings config.CDNProviderSetting) (cdn.Provider, error) {
 	switch strings.ToLower(strings.TrimSpace(provider)) {
 	case "cloudflare":
@@ -480,13 +482,17 @@ func buildOriginProvider(provider string, settings config.CDNProviderSetting) (c
 		}), nil
 	case "aliyun":
 		return aliyun.NewProvider(aliyun.Config{
-			IPv4URL: strings.TrimSpace(settings.IPv4URL),
-			IPv6URL: strings.TrimSpace(settings.IPv6URL),
+			AccessKeyID:     strings.TrimSpace(settings.APIKey),
+			AccessKeySecret: strings.TrimSpace(settings.SecretKey),
+			Endpoint:        strings.TrimSpace(settings.Endpoint),
+			SiteID:          strings.TrimSpace(settings.Option),
 		}), nil
 	case "tencent":
 		return tencent.NewProvider(tencent.Config{
-			IPv4URL: strings.TrimSpace(settings.IPv4URL),
-			IPv6URL: strings.TrimSpace(settings.IPv6URL),
+			SecretID:  strings.TrimSpace(settings.APIKey),
+			SecretKey: strings.TrimSpace(settings.SecretKey),
+			ZoneID:    strings.TrimSpace(settings.ZoneID),
+			Endpoint:  strings.TrimSpace(settings.Endpoint),
 		}), nil
 	default:
 		return nil, errors.New("cdn provider is not supported")

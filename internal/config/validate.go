@@ -115,12 +115,55 @@ func ValidateConfig(cfg Config, configPath string) []ValidationIssue {
 			}
 		}
 
-		if provider == "cloudflare" || provider == "aliyun" || provider == "tencent" {
+		switch provider {
+		case "cloudflare":
 			if strings.TrimSpace(settings.IPv4URL) == "" && strings.TrimSpace(settings.IPv6URL) == "" {
 				issues = append(issues, ValidationIssue{
 					Path:    fmt.Sprintf("security.cdnProviderSettings.%s.ipv4Url", provider),
 					Message: "ipv4Url or ipv6Url is required",
 				})
+			}
+		case "aliyun":
+			if strings.TrimSpace(settings.APIKey) == "" {
+				issues = append(issues, ValidationIssue{
+					Path:    fmt.Sprintf("security.cdnProviderSettings.%s.apiKey", provider),
+					Message: "apiKey is required",
+				})
+			}
+			if strings.TrimSpace(settings.Option) == "" {
+				issues = append(issues, ValidationIssue{
+					Path:    fmt.Sprintf("security.cdnProviderSettings.%s.option", provider),
+					Message: "option(siteId) is required",
+				})
+			}
+			if strings.TrimSpace(settings.Endpoint) != "" {
+				if parsed, err := url.Parse(strings.TrimSpace(settings.Endpoint)); err != nil || parsed.Scheme == "" || parsed.Host == "" {
+					issues = append(issues, ValidationIssue{
+						Path:    fmt.Sprintf("security.cdnProviderSettings.%s.endpoint", provider),
+						Message: "endpoint is invalid",
+					})
+				}
+			}
+		case "tencent":
+			if strings.TrimSpace(settings.APIKey) == "" {
+				issues = append(issues, ValidationIssue{
+					Path:    fmt.Sprintf("security.cdnProviderSettings.%s.apiKey", provider),
+					Message: "apiKey is required",
+				})
+			}
+			if strings.TrimSpace(settings.ZoneID) == "" {
+				issues = append(issues, ValidationIssue{
+					Path:    fmt.Sprintf("security.cdnProviderSettings.%s.zoneId", provider),
+					Message: "zoneId is required",
+				})
+			}
+			if strings.TrimSpace(settings.Endpoint) != "" {
+				if parsed, err := url.Parse(strings.TrimSpace(settings.Endpoint)); err != nil || parsed.Scheme == "" || parsed.Host == "" {
+					issues = append(issues, ValidationIssue{
+						Path:    fmt.Sprintf("security.cdnProviderSettings.%s.endpoint", provider),
+						Message: "endpoint is invalid",
+					})
+				}
 			}
 		}
 	}

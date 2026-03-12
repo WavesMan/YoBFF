@@ -275,102 +275,262 @@ export function SecurityTab({
                     
                     {isEnabled && (
                       <div className="card-body">
-                        <div className="form-field small">
-                          <label>IPv4 URL</label>
-                          <input
-                            className="input small"
-                            placeholder="必填其一：ipv4Url / ipv6Url"
-                            value={settings.ipv4Url || ''}
-                            onChange={e => {
-                              const val = e.target.value
-                              updateConfig(prev => {
-                                const currentSettings = prev.security?.cdnProviderSettings || {}
-                                return {
-                                  ...prev,
-                                  security: {
-                                    ...prev.security,
-                                    cdnProviderSettings: {
-                                      ...currentSettings,
-                                      [provider]: { ...currentSettings[provider], ipv4Url: val }
+                        {provider === 'cloudflare' && (
+                          <>
+                            <div className="form-field small">
+                              <label>IPv4 列表 URL</label>
+                              <input
+                                className="input small"
+                                placeholder="必填其一：ipv4Url / ipv6Url"
+                                value={settings.ipv4Url || ''}
+                                onChange={e => {
+                                  const val = e.target.value
+                                  updateConfig(prev => {
+                                    const currentSettings = prev.security?.cdnProviderSettings || {}
+                                    return {
+                                      ...prev,
+                                      security: {
+                                        ...prev.security,
+                                        cdnProviderSettings: {
+                                          ...currentSettings,
+                                          [provider]: { ...currentSettings[provider], ipv4Url: val }
+                                        }
+                                      }
                                     }
-                                  }
-                                }
-                              })
-                            }}
-                          />
-                        </div>
-                        <div className="form-field small">
-                          <label>IPv6 URL</label>
-                          <input
-                            className="input small"
-                            placeholder="可选"
-                            value={settings.ipv6Url || ''}
-                            onChange={e => {
-                              const val = e.target.value
-                              updateConfig(prev => {
-                                const currentSettings = prev.security?.cdnProviderSettings || {}
-                                return {
-                                  ...prev,
-                                  security: {
-                                    ...prev.security,
-                                    cdnProviderSettings: {
-                                      ...currentSettings,
-                                      [provider]: { ...currentSettings[provider], ipv6Url: val }
+                                  })
+                                }}
+                              />
+                            </div>
+                            <div className="form-field small">
+                              <label>IPv6 列表 URL</label>
+                              <input
+                                className="input small"
+                                placeholder="可选"
+                                value={settings.ipv6Url || ''}
+                                onChange={e => {
+                                  const val = e.target.value
+                                  updateConfig(prev => {
+                                    const currentSettings = prev.security?.cdnProviderSettings || {}
+                                    return {
+                                      ...prev,
+                                      security: {
+                                        ...prev.security,
+                                        cdnProviderSettings: {
+                                          ...currentSettings,
+                                          [provider]: { ...currentSettings[provider], ipv6Url: val }
+                                        }
+                                      }
                                     }
-                                  }
-                                }
-                              })
-                            }}
-                          />
-                        </div>
-                        <div className="form-field small">
-                          <label>API Key / Token</label>
-                          <input 
-                            className="input small"
-                            placeholder="可选配置"
-                            value={settings.apiKey || ''}
-                            onChange={e => {
-                              const val = e.target.value
-                              updateConfig(prev => {
-                                const currentSettings = prev.security?.cdnProviderSettings || {}
-                                return {
-                                  ...prev,
-                                  security: {
-                                    ...prev.security,
-                                    cdnProviderSettings: {
-                                      ...currentSettings,
-                                      [provider]: { ...currentSettings[provider], apiKey: val }
+                                  })
+                                }}
+                              />
+                            </div>
+                          </>
+                        )}
+
+                        {provider === 'aliyun' && (
+                          <>
+                            <div className="form-field small">
+                              <label>AccessKeyId</label>
+                              <input
+                                className="input small"
+                                placeholder="必填"
+                                value={settings.apiKey || ''}
+                                onChange={e => {
+                                  const val = e.target.value
+                                  updateConfig(prev => {
+                                    const currentSettings = prev.security?.cdnProviderSettings || {}
+                                    return {
+                                      ...prev,
+                                      security: {
+                                        ...prev.security,
+                                        cdnProviderSettings: {
+                                          ...currentSettings,
+                                          [provider]: { ...currentSettings[provider], apiKey: val }
+                                        }
+                                      }
                                     }
-                                  }
-                                }
-                              })
-                            }}
-                          />
-                        </div>
-                        <div className="form-field small">
-                          <label>Option / Secret</label>
-                          <input 
-                            className="input small"
-                            placeholder="可选配置"
-                            value={settings.secretKey || ''}
-                            onChange={e => {
-                              const val = e.target.value
-                              updateConfig(prev => {
-                                const currentSettings = prev.security?.cdnProviderSettings || {}
-                                return {
-                                  ...prev,
-                                  security: {
-                                    ...prev.security,
-                                    cdnProviderSettings: {
-                                      ...currentSettings,
-                                      [provider]: { ...currentSettings[provider], secretKey: val }
+                                  })
+                                }}
+                              />
+                            </div>
+                            <div className="form-field small">
+                              <label>AccessKeySecret</label>
+                              <input
+                                className="input small"
+                                type="password"
+                                placeholder="仅写入不回显；留空表示保留历史值"
+                                value={settings.secretKey || ''}
+                                onChange={e => {
+                                  const val = e.target.value
+                                  updateConfig(prev => {
+                                    const currentSettings = prev.security?.cdnProviderSettings || {}
+                                    return {
+                                      ...prev,
+                                      security: {
+                                        ...prev.security,
+                                        cdnProviderSettings: {
+                                          ...currentSettings,
+                                          [provider]: { ...currentSettings[provider], secretKey: val }
+                                        }
+                                      }
                                     }
-                                  }
-                                }
-                              })
-                            }}
-                          />
-                        </div>
+                                  })
+                                }}
+                              />
+                            </div>
+                            <div className="form-field small">
+                              <label>ESA SiteId</label>
+                              <input
+                                className="input small"
+                                placeholder="必填"
+                                value={settings.option || ''}
+                                onChange={e => {
+                                  const val = e.target.value
+                                  updateConfig(prev => {
+                                    const currentSettings = prev.security?.cdnProviderSettings || {}
+                                    return {
+                                      ...prev,
+                                      security: {
+                                        ...prev.security,
+                                        cdnProviderSettings: {
+                                          ...currentSettings,
+                                          [provider]: { ...currentSettings[provider], option: val }
+                                        }
+                                      }
+                                    }
+                                  })
+                                }}
+                              />
+                            </div>
+                            <div className="form-field small">
+                              <label>ESA Endpoint</label>
+                              <input
+                                className="input small"
+                                placeholder="可选，默认使用官方端点"
+                                value={settings.endpoint || ''}
+                                onChange={e => {
+                                  const val = e.target.value
+                                  updateConfig(prev => {
+                                    const currentSettings = prev.security?.cdnProviderSettings || {}
+                                    return {
+                                      ...prev,
+                                      security: {
+                                        ...prev.security,
+                                        cdnProviderSettings: {
+                                          ...currentSettings,
+                                          [provider]: { ...currentSettings[provider], endpoint: val }
+                                        }
+                                      }
+                                    }
+                                  })
+                                }}
+                              />
+                            </div>
+                          </>
+                        )}
+
+                        {provider === 'tencent' && (
+                          <>
+                            <div className="form-field small">
+                              <label>SecretId</label>
+                              <input
+                                className="input small"
+                                placeholder="必填"
+                                value={settings.apiKey || ''}
+                                onChange={e => {
+                                  const val = e.target.value
+                                  updateConfig(prev => {
+                                    const currentSettings = prev.security?.cdnProviderSettings || {}
+                                    return {
+                                      ...prev,
+                                      security: {
+                                        ...prev.security,
+                                        cdnProviderSettings: {
+                                          ...currentSettings,
+                                          [provider]: { ...currentSettings[provider], apiKey: val }
+                                        }
+                                      }
+                                    }
+                                  })
+                                }}
+                              />
+                            </div>
+                            <div className="form-field small">
+                              <label>SecretKey</label>
+                              <input
+                                className="input small"
+                                type="password"
+                                placeholder="仅写入不回显；留空表示保留历史值"
+                                value={settings.secretKey || ''}
+                                onChange={e => {
+                                  const val = e.target.value
+                                  updateConfig(prev => {
+                                    const currentSettings = prev.security?.cdnProviderSettings || {}
+                                    return {
+                                      ...prev,
+                                      security: {
+                                        ...prev.security,
+                                        cdnProviderSettings: {
+                                          ...currentSettings,
+                                          [provider]: { ...currentSettings[provider], secretKey: val }
+                                        }
+                                      }
+                                    }
+                                  })
+                                }}
+                              />
+                            </div>
+                            <div className="form-field small">
+                              <label>TEO ZoneId</label>
+                              <input
+                                className="input small"
+                                placeholder="必填"
+                                value={settings.zoneId || ''}
+                                onChange={e => {
+                                  const val = e.target.value
+                                  updateConfig(prev => {
+                                    const currentSettings = prev.security?.cdnProviderSettings || {}
+                                    return {
+                                      ...prev,
+                                      security: {
+                                        ...prev.security,
+                                        cdnProviderSettings: {
+                                          ...currentSettings,
+                                          [provider]: { ...currentSettings[provider], zoneId: val }
+                                        }
+                                      }
+                                    }
+                                  })
+                                }}
+                              />
+                            </div>
+                            <div className="form-field small">
+                              <label>TEO Endpoint</label>
+                              <input
+                                className="input small"
+                                placeholder="可选，默认使用官方端点"
+                                value={settings.endpoint || ''}
+                                onChange={e => {
+                                  const val = e.target.value
+                                  updateConfig(prev => {
+                                    const currentSettings = prev.security?.cdnProviderSettings || {}
+                                    return {
+                                      ...prev,
+                                      security: {
+                                        ...prev.security,
+                                        cdnProviderSettings: {
+                                          ...currentSettings,
+                                          [provider]: { ...currentSettings[provider], endpoint: val }
+                                        }
+                                      }
+                                    }
+                                  })
+                                }}
+                              />
+                            </div>
+                          </>
+                        )}
                         <div className="form-field small">
                           <label>刷新间隔（秒）</label>
                           <input

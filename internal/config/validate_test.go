@@ -50,6 +50,51 @@ func TestValidateConfig_Issues(t *testing.T) {
 			wantKey: "security.allowedCdnProviders[1]",
 		},
 		{
+			name: "cloudflare cdn settings url required",
+			cfg: Config{
+				Security: SecurityConfig{
+					AllowedCDNProviders: []string{"cloudflare"},
+				},
+			},
+			wantKey: "security.cdnProviderSettings.cloudflare.ipv4Url",
+		},
+		{
+			name: "aliyun cdn settings api key required",
+			cfg: Config{
+				Security: SecurityConfig{
+					AllowedCDNProviders: []string{"aliyun"},
+					CDNProviderSettings: map[string]CDNProviderSetting{
+						"aliyun": {Option: "123"},
+					},
+				},
+			},
+			wantKey: "security.cdnProviderSettings.aliyun.apiKey",
+		},
+		{
+			name: "aliyun cdn settings option required",
+			cfg: Config{
+				Security: SecurityConfig{
+					AllowedCDNProviders: []string{"aliyun"},
+					CDNProviderSettings: map[string]CDNProviderSetting{
+						"aliyun": {APIKey: "a"},
+					},
+				},
+			},
+			wantKey: "security.cdnProviderSettings.aliyun.option",
+		},
+		{
+			name: "tencent cdn settings zone id required",
+			cfg: Config{
+				Security: SecurityConfig{
+					AllowedCDNProviders: []string{"tencent"},
+					CDNProviderSettings: map[string]CDNProviderSetting{
+						"tencent": {APIKey: "a"},
+					},
+				},
+			},
+			wantKey: "security.cdnProviderSettings.tencent.zoneId",
+		},
+		{
 			name: "domain required",
 			cfg: Config{
 				Routing: RoutingConfig{

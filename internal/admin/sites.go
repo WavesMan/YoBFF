@@ -304,7 +304,7 @@ func (s *Server) siteConfig(w http.ResponseWriter, r *http.Request, siteID strin
 			writeSiteError(w, err, r)
 			return
 		}
-		writeJSON(w, http.StatusOK, cfg)
+		writeJSON(w, http.StatusOK, redactSiteConfigSecrets(cfg))
 	case http.MethodPut:
 		var cfg config.Config
 		decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 2<<20))
@@ -388,7 +388,7 @@ func (s *Server) siteConfigDiff(w http.ResponseWriter, r *http.Request, siteID s
 		writeSiteError(w, err, r)
 		return
 	}
-	changes, err := buildConfigDiff(baseConfig, targetConfig)
+	changes, err := buildConfigDiff(redactSiteConfigSecrets(baseConfig), redactSiteConfigSecrets(targetConfig))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "diff_failed", err.Error(), r)
 		return
@@ -444,7 +444,21 @@ func (s *Server) siteConfigVersionDetail(w http.ResponseWriter, r *http.Request,
 		writeSiteError(w, err, r)
 		return
 	}
-	writeJSON(w, http.StatusOK, cfg)
+	writeJSON(w, http.StatusOK, redactSiteConfigSecrets(cfg))
+}
+
+// redactSiteConfigSecrets 清理站点配置中的敏感字段，避免 SecretKey 在接口响应、差异对比与审计链路中回传。
+func redactSiteConfigSecrets(cfg config.Config) config.Config {
+	if cfg.Security.CDNProviderSettings == nil {
+		return cfg
+	}
+	next := cfg
+	next.Security.CDNProviderSettings = make(map[string]config.CDNProviderSetting, len(cfg.Security.CDNProviderSettings))
+	for provider, settings := range cfg.Security.CDNProviderSettings {
+		settings.SecretKey = ""
+		next.Security.CDNProviderSettings[provider] = settings
+	}
+	return next
 }
 
 func (s *Server) siteConfigVersionDelete(w http.ResponseWriter, r *http.Request, siteID string, versionID string) {

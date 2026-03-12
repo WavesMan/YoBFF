@@ -2092,6 +2092,7 @@ components:
           type: string
         secretKey:
           type: string
+          writeOnly: true
         option:
           type: string
         accountId:
