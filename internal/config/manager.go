@@ -59,11 +59,11 @@ type CDNStatus struct {
 
 // Manager 负责管理运行时配置快照与原子切换。
 type Manager struct {
-	path                    string
-	data                    atomic.Pointer[snapshot]
-	mu                      sync.Mutex
-	dynamicCIDRs            []string
-	cdnStatuses             map[string]CDNStatus
+	path                     string
+	data                     atomic.Pointer[snapshot]
+	mu                       sync.Mutex
+	dynamicCIDRs             []string
+	cdnStatuses              map[string]CDNStatus
 	siteCDNProviderSnapshots map[string]map[string]siteCDNSnapshot
 }
 
