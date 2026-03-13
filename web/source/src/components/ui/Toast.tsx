@@ -2,8 +2,8 @@ import React, { createContext, useContext, useState, useCallback, useRef } from 
 import { createPortal } from 'react-dom';
 import { FiCheckCircle, FiAlertCircle, FiAlertTriangle, FiInfo, FiX } from 'react-icons/fi';
 import './Toast.css';
-import { ErrorDrawer, translateMessage } from './ErrorDrawer';
-import type { ErrorLogItem } from './ErrorDrawer';
+import { ErrorDrawer } from './ErrorDrawer';
+import { translateMessage, type ErrorLogItem } from './ErrorDrawerUtils';
 import { RequestError } from '../../admin/api';
 
 export type ToastType = 'success' | 'error' | 'warning' | 'info';

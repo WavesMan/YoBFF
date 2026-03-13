@@ -1,44 +1,7 @@
 import { useState, useEffect } from 'react';
 import { FiX, FiAlertCircle, FiList, FiTrash2, FiCopy, FiCheck } from 'react-icons/fi';
+import { translateMessage, type ErrorLogItem } from './ErrorDrawerUtils';
 import './ErrorDrawer.css';
-
-export interface ErrorLogItem {
-    id: string;
-    message: string;
-    errorCode?: string;
-    requestId?: string;
-    timestamp: number;
-}
-
-// 简单的错误信息汉化映射
-export const ERROR_TRANSLATIONS: Record<string, string> = {
-    'invalid_captcha': '验证码错误',
-    'invalid_username_or_password': '用户名或密码错误',
-    'token_expired': '登录已过期',
-    'not_found': '资源未找到',
-    'internal_error': '服务器内部错误',
-    'unauthorized': '未授权访问',
-    'forbidden': '禁止访问',
-    'bad_request': '请求参数错误',
-};
-
-// 尝试翻译错误信息
-export const translateMessage = (msg: string, code?: string): string => {
-    // 1. 如果有 code 且在映射表中，优先使用映射
-    if (code && ERROR_TRANSLATIONS[code]) {
-        return ERROR_TRANSLATIONS[code];
-    }
-    
-    // 2. 尝试匹配 msg 中的英文关键词
-    for (const [key, value] of Object.entries(ERROR_TRANSLATIONS)) {
-        if (msg.toLowerCase().includes(key.replace(/_/g, ' '))) {
-            return value;
-        }
-    }
-
-    // 3. 默认返回原消息
-    return msg;
-};
 
 interface ErrorDrawerProps {
     errors: ErrorLogItem[];

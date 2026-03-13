@@ -10,7 +10,6 @@ import type {
 } from '../admin/types'
 import { useToast } from '../components/ui/Toast'
 import { 
-    RiShieldFlashLine, 
     RiUserLine, 
     RiLockPasswordLine, 
     RiShieldKeyholeLine,
@@ -123,7 +122,7 @@ export function LoginLayout({ onLoginSuccess }: LoginLayoutProps) {
             <div className="login-card-modern">
                 <div className="brand-section">
                     <div className="brand-logo">
-                        <RiShieldFlashLine />
+                        <img src="/Logo.png" alt="YoBFF Logo" />
                     </div>
                     <h1 className="brand-title">YoBFF</h1>
                     <p className="brand-subtitle">管理端登录</p>

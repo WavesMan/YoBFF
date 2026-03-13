@@ -29,8 +29,8 @@ export function Sidebar({ items, activeKey, onChange, collapsed, onToggle }: Sid
   return (
     <aside className={`sidebar ${collapsed ? 'collapsed' : ''}`}>
       <div className="brand">
-        <span className="brand-logo">Y</span>
-        <span className="brand-text">YoBFF Console</span>
+        <img src="/Logo.png" alt="YoBFF" className="brand-logo" />
+        <span className="brand-text">YoBFF Web</span>
       </div>
 
       <nav className="nav-group">
