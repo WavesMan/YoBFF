@@ -115,6 +115,12 @@ export function MainLayout({
           )}
           {children}
         </main>
+        <footer className="app-footer">
+          <p>&copy; 2026 YoBFF - BFF Load Balancing Gateway. Licensed under the Apache License, Version 2.0.</p>
+          <p>
+            Available at: <a href="https://github.com/WavesMan/YoBFF" target="_blank" rel="noreferrer">https://github.com/WavesMan/YoBFF</a>
+          </p>
+        </footer>
       </div>
     </div>
   )

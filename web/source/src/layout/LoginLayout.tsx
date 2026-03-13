@@ -218,9 +218,12 @@ export function LoginLayout({ onLoginSuccess }: LoginLayoutProps) {
                     </button>
                 </form>
 
-                <div className="login-footer">
-                    &copy; {new Date().getFullYear()} YoBFF Admin Panel
-                </div>
+            </div>
+            <div className="login-footer">
+                <p>&copy; 2026 YoBFF - BFF Load Balancing Gateway. Licensed under the Apache License, Version 2.0.</p>
+                <p>
+                    Available at: <a href="https://github.com/WavesMan/YoBFF" target="_blank" rel="noreferrer">https://github.com/WavesMan/YoBFF</a>
+                </p>
             </div>
         </div>
     )
