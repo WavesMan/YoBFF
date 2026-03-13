@@ -1,4 +1,7 @@
 import type { Config, Site, SiteUpdateRequest } from '../../../../admin/types'
+import { Button } from '../../../../components/ui/Button'
+import { Input } from '../../../../components/ui/Input'
+import { Card, CardContent, CardHeader, CardTitle } from '../../../../components/ui/Card'
 
 type BasicSettingsTabProps = {
   site: Site | null
@@ -24,64 +27,68 @@ export function BasicSettingsTab({
   loading,
 }: BasicSettingsTabProps) {
   return (
-    <div className="panel">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-        <h4 style={{ margin: 0 }}>基础设置</h4>
-        <button 
-          className="button secondary small" 
-          onClick={handleSaveSiteInfo}
-          disabled={updatingSite || loading}
-        >
-          {updatingSite ? '更新中...' : '更新基本信息'}
-        </button>
-      </div>
-      
-      <div className="form-field">
-        <label>站点 ID</label>
-        <input className="input" defaultValue={siteId} disabled />
-      </div>
-      {site && (
-        <>
-          <div className="form-field">
-            <label>站点名称</label>
-            <input 
-              className="input" 
-              value={siteForm.name || ''} 
-              onChange={e => setSiteForm({ ...siteForm, name: e.target.value })}
-            />
-          </div>
-          <div className="form-field">
-            <label>主域名</label>
-            <input 
-              className="input" 
-              value={siteForm.hostname || ''} 
-              onChange={e => setSiteForm({ ...siteForm, hostname: e.target.value })}
-            />
-          </div>
-          <div className="form-field">
-            <label>绑定 IP</label>
-            <input 
-              className="input" 
-              value={siteForm.ip || ''} 
-              onChange={e => setSiteForm({ ...siteForm, ip: e.target.value })}
-            />
-          </div>
-        </>
-      )}
-      <div className="divider" />
-      <h4>数据面配置</h4>
-      <div className="form-field">
-         <label>HTTPS 监听地址</label>
-         <input 
-            className="input"
+    <div className="space-y-6">
+      <Card className="border-0 shadow-none">
+        <CardHeader className="flex flex-row items-center justify-between px-0 pt-0">
+          <CardTitle className="text-lg">基础设置</CardTitle>
+          <Button 
+            variant="secondary"
+            size="sm"
+            onClick={handleSaveSiteInfo}
+            disabled={updatingSite || loading}
+          >
+            {updatingSite ? '更新中...' : '更新基本信息'}
+          </Button>
+        </CardHeader>
+        
+        <CardContent className="px-0 space-y-4">
+          <Input 
+            label="站点 ID" 
+            value={siteId} 
+            disabled 
+            readOnly
+          />
+          
+          {site && (
+            <>
+              <Input 
+                label="站点名称" 
+                value={siteForm.name || ''} 
+                onChange={e => setSiteForm({ ...siteForm, name: e.target.value })}
+              />
+              <Input 
+                label="主域名" 
+                value={siteForm.hostname || ''} 
+                onChange={e => setSiteForm({ ...siteForm, hostname: e.target.value })}
+              />
+              <Input 
+                label="绑定 IP" 
+                value={siteForm.ip || ''} 
+                onChange={e => setSiteForm({ ...siteForm, ip: e.target.value })}
+              />
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      <div className="border-t my-6" />
+
+      <Card className="border-0 shadow-none">
+        <CardHeader className="px-0 pt-0">
+          <CardTitle className="text-lg">数据面配置</CardTitle>
+        </CardHeader>
+        <CardContent className="px-0">
+          <Input 
+            label="HTTPS 监听地址"
             value={config.dataPlane?.httpsListenAddr || ''}
             onChange={e => updateConfig(prev => ({
               ...prev,
               dataPlane: { ...prev.dataPlane, httpsListenAddr: e.target.value }
             }))}
             placeholder=":443"
-         />
-      </div>
+          />
+        </CardContent>
+      </Card>
     </div>
   )
 }

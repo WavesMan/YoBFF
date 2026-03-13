@@ -1,4 +1,7 @@
+import { FiActivity, FiServer, FiShield, FiAlertCircle, FiCheckCircle } from 'react-icons/fi'
 import type { HealthzResponse, LogStats } from '../admin/types'
+import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card'
+import { Badge } from '../components/ui/Badge'
 
 type OverviewSectionProps = {
   health: HealthzResponse | null
@@ -16,6 +19,7 @@ export function OverviewSection({
   loadingLogStats,
 }: OverviewSectionProps) {
   const healthStatus = health?.status === 'ok' ? 'success' : 'warning'
+  
   const alertItems = []
   if (health && health.status !== 'ok') {
     alertItems.push({ level: 'error', text: '健康检查异常' })
@@ -37,80 +41,92 @@ export function OverviewSection({
   }
 
   return (
-    <>
-      <div className="grid grid-3">
-        <div className="card">
-          <div className="card-header">
-            <h3 className="card-title">服务健康度</h3>
-            <span className="badge">
-              <span className={`status-dot status-${healthStatus}`} />
-              {health?.status || 'unknown'}
-            </span>
-          </div>
-          {loadingHealth ? <div className="skeleton" /> : <div className="stat-value">{health?.status || 'unknown'}</div>}
-          <div className="stat-label">GET /healthz</div>
-        </div>
-        <div className="card">
-          <div className="card-header">
-            <h3 className="card-title">日志管线统计</h3>
-            <span className="pill">GET /admin/api/v1/log/stats</span>
-          </div>
-          {loadingLogStats ? (
-            <div className="stack">
-              <div className="skeleton" />
-              <div className="skeleton" />
-            </div>
-          ) : (
-            <div className="stack">
-              <div className="stat-value">{logStats?.total ?? '-'}</div>
-              <div className="inline">
-                <span className="badge">blocked {logStats?.blocked ?? '-'}</span>
-                <span className="badge">proxied {logStats?.proxied ?? '-'}</span>
-                <span className="badge">dropped {logStats?.dropped ?? '-'}</span>
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">服务健康度</CardTitle>
+            <FiActivity className={`h-4 w-4 ${healthStatus === 'success' ? 'text-green-500' : 'text-yellow-500'}`} />
+          </CardHeader>
+          <CardContent>
+            {loadingHealth ? (
+              <div className="h-8 w-24 bg-muted animate-pulse rounded" />
+            ) : (
+              <div className="text-2xl font-bold">{health?.status || 'unknown'}</div>
+            )}
+            <p className="text-xs text-muted-foreground mt-1">GET /healthz</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">日志管线统计</CardTitle>
+            <FiServer className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            {loadingLogStats ? (
+              <div className="space-y-2">
+                <div className="h-8 w-16 bg-muted animate-pulse rounded" />
+                <div className="h-4 w-full bg-muted animate-pulse rounded" />
               </div>
+            ) : (
+              <>
+                <div className="text-2xl font-bold">{logStats?.total ?? '-'}</div>
+                <div className="flex flex-wrap gap-2 mt-2">
+                  <Badge variant="default" className="text-[10px] h-5">blocked {logStats?.blocked ?? '-'}</Badge>
+                  <Badge variant="default" className="text-[10px] h-5">proxied {logStats?.proxied ?? '-'}</Badge>
+                  <Badge variant="default" className="text-[10px] h-5">dropped {logStats?.dropped ?? '-'}</Badge>
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">运行策略</CardTitle>
+            <FiShield className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium">日志级别:</span>
+              <Badge>{logLevel.toUpperCase()}</Badge>
             </div>
-          )}
-        </div>
-        <div className="card">
-          <div className="card-header">
-            <h3 className="card-title">运行策略</h3>
-            <span className="pill">动态生效</span>
-          </div>
-          <div className="stack">
-            <div className="inline">
-              <span className="badge">日志级别</span>
-              <span className="stat-value">{logLevel.toUpperCase()}</span>
+            <p className="text-xs text-muted-foreground mt-2">支持 Debug/Info/Warn/Error 即时切换</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>告警摘要</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {alertItems.map((item, index) => (
+                <div key={`${item.level}-${index}`} className="flex items-center gap-2 p-2 rounded-md bg-muted/30">
+                  {item.level === 'error' && <FiAlertCircle className="text-destructive" />}
+                  {item.level === 'warning' && <FiAlertCircle className="text-yellow-500" />}
+                  {item.level === 'success' && <FiCheckCircle className="text-green-500" />}
+                  <span className="text-sm">{item.text}</span>
+                </div>
+              ))}
             </div>
-            <div className="muted">支持 Debug/Info/Warn/Error 即时切换</div>
-          </div>
-        </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>趋势概览</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="h-[120px] flex items-center justify-center border-2 border-dashed rounded-md bg-muted/20">
+              <span className="text-muted-foreground text-sm">图表区域已预留，可接入 Recharts 或 ECharts</span>
+            </div>
+          </CardContent>
+        </Card>
       </div>
-      <div className="grid grid-2">
-        <div className="card">
-          <div className="card-header">
-            <h3 className="card-title">告警摘要</h3>
-            <span className="pill">近 5 条</span>
-          </div>
-          <div className="stack">
-            {alertItems.map((item, index) => (
-              <div className="inline" key={`${item.level}-${index}`}>
-                <span className={`status-dot status-${item.level}`} />
-                {item.text}
-              </div>
-            ))}
-          </div>
-        </div>
-        <div className="card">
-          <div className="card-header">
-            <h3 className="card-title">趋势概览</h3>
-            <span className="pill">过去 1 小时</span>
-          </div>
-          <div className="stack">
-            <div className="muted">图表区域已预留，可接入 Recharts 或 ECharts</div>
-            <div className="skeleton" style={{ height: 120 }} />
-          </div>
-        </div>
-      </div>
-    </>
+    </div>
   )
 }

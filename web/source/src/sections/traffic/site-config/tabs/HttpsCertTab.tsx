@@ -1,5 +1,9 @@
 import { FiCheck, FiTrash2 } from 'react-icons/fi'
-import type { Config, Site, SSLCertificate } from '../../../../admin/types'
+import type { Config, Site, SSLCertificate, Certificate } from '../../../../admin/types'
+import { Card, CardContent, CardHeader, CardTitle } from '../../../../components/ui/Card'
+import { Button } from '../../../../components/ui/Button'
+import { Table, type Column } from '../../../../components/ui/Table'
+import { Badge } from '../../../../components/ui/Badge'
 
 type HttpsCertTabProps = {
   site: Site | null
@@ -17,103 +21,148 @@ export function HttpsCertTab({
   handleRemoveCert,
 }: HttpsCertTabProps) {
   const selectedCert = filteredCerts.find(cert => cert.id === config.dataPlane?.certId)
-  return (
-    <div className="panel">
-      <h4>HTTPS 证书</h4>
-      <div className="muted" style={{ marginBottom: 15 }}>
-        为站点 {site?.hostname || '-'} 选择已上传的 SSL 证书，并可配置自动申请证书的域名列表。
-      </div>
 
-      <div className="panel" style={{ marginBottom: 16 }}>
-        <h4 style={{ marginTop: 0 }}>已上传证书（匹配站点域名）</h4>
-        {filteredCerts.length === 0 ? (
-          <div className="muted">没有找到匹配的证书，请先在证书管理中上传。</div>
-        ) : (
-          <div className="table-container">
-            <table className="table">
-              <thead>
-                <tr>
-                  <th>备注名</th>
-                  <th>包含域名</th>
-                  <th>颁发机构</th>
-                  <th>过期时间</th>
-                  <th style={{ textAlign: 'right' }}>操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredCerts.map(cert => {
-                  const isSelected = config.dataPlane?.certId === cert.id
-                  return (
-                    <tr key={cert.id}>
-                      <td style={{ fontWeight: isSelected ? 600 : 400 }}>
-                        {cert.name} {isSelected ? '（已选择）' : ''}
-                      </td>
-                      <td className="text-muted">
-                        {(cert.domains || []).slice(0, 3).join(', ')}
-                        {(cert.domains || []).length > 3 ? ` +${cert.domains.length - 3}` : ''}
-                      </td>
-                      <td className="text-muted">{cert.issuer || '-'}</td>
-                      <td className="text-muted">{new Date(cert.notAfter).toLocaleDateString()}</td>
-                      <td style={{ textAlign: 'right' }}>
-                        <button
-                          className={`button small ${isSelected ? 'secondary' : 'primary'}`}
-                          disabled={isSelected}
-                          onClick={() => {
-                            updateConfig(prev => ({
-                              ...prev,
-                              dataPlane: {
-                                ...prev.dataPlane,
-                                enableHttps: true,
-                                certId: cert.id,
-                              },
-                            }))
-                          }}
-                          title={isSelected ? '已选择' : '选择此证书'}
-                        >
-                          {isSelected ? <FiCheck /> : '选择'}
-                        </button>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+  const uploadedCertColumns = [
+    {
+      key: 'name',
+      title: '备注名',
+      render: (cert: SSLCertificate) => {
+        const isSelected = config.dataPlane?.certId === cert.id
+        return (
+          <span className={isSelected ? 'font-semibold' : ''}>
+            {cert.name} {isSelected && <Badge variant="default" className="ml-2">已选择</Badge>}
+          </span>
+        )
+      }
+    },
+    {
+      key: 'domains',
+      title: '包含域名',
+      render: (cert: SSLCertificate) => {
+        const domains = cert.domains || []
+        const display = domains.slice(0, 3).join(', ')
+        const more = domains.length > 3 ? ` +${domains.length - 3}` : ''
+        return <span className="text-muted-foreground">{display}{more}</span>
+      }
+    },
+    {
+      key: 'issuer',
+      title: '颁发机构',
+      render: (cert: SSLCertificate) => <span className="text-muted-foreground">{cert.issuer || '-'}</span>
+    },
+    {
+      key: 'notAfter',
+      title: '过期时间',
+      render: (cert: SSLCertificate) => <span className="text-muted-foreground">{new Date(cert.notAfter).toLocaleDateString()}</span>
+    },
+    {
+      key: 'actions',
+      title: '操作',
+      render: (cert: SSLCertificate) => {
+        const isSelected = config.dataPlane?.certId === cert.id
+        return (
+          <div className="flex justify-end">
+            <Button
+              variant={isSelected ? 'secondary' : 'primary'}
+              size="sm"
+              disabled={isSelected}
+              onClick={() => {
+                updateConfig(prev => ({
+                  ...prev,
+                  dataPlane: {
+                    ...prev.dataPlane,
+                    enableHttps: true,
+                    certId: cert.id,
+                  },
+                }))
+              }}
+              title={isSelected ? '已选择' : '选择此证书'}
+              icon={isSelected ? <FiCheck /> : undefined}
+            >
+              {isSelected ? '已选择' : '选择'}
+            </Button>
           </div>
-        )}
-        <div className="muted" style={{ marginTop: 10 }}>
-          当前状态：{config.dataPlane?.enableHttps ? 'HTTPS 已启用' : 'HTTPS 未启用'}
-          {selectedCert ? `，使用证书「${selectedCert.name}」` : config.dataPlane?.certId ? '，证书未匹配到站点域名' : ''}
-        </div>
-      </div>
+        )
+      }
+    }
+  ]
 
-      <h4 style={{ marginTop: 0 }}>自动申请证书域名</h4>
-      <table className="table">
-        <thead>
-          <tr>
-            <th>域名</th>
-            <th style={{ textAlign: 'right' }}>操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          {(config.certificates || []).map((cert, index) => (
-            <tr key={index}>
-              <td>{cert.domain}</td>
-              <td style={{ textAlign: 'right' }}>
-                <button className="button danger small" onClick={() => handleRemoveCert(index)}>
-                  <FiTrash2 />
-                </button>
-              </td>
-            </tr>
-          ))}
-          {(!config.certificates || config.certificates.length === 0) && (
-            <tr>
-              <td colSpan={2} className="muted" style={{ textAlign: 'center' }}>
-                暂无证书配置
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
+  const autoCertColumns: Column<Certificate>[] = [
+    {
+      key: 'domain',
+      title: '域名',
+      width: '80%'
+    },
+    {
+      key: 'actions',
+      title: '操作',
+      width: '20%',
+      render: (_: Certificate) => (
+        <div className="flex justify-end">
+          <Button
+            variant="danger"
+            size="sm"
+            onClick={() => {
+              // Note: We need the index but the Table component only passes the record.
+              // This is a limitation of the current Table component implementation.
+              // For now we will rely on finding the index by domain which should be unique here.
+              const idx = config.certificates?.findIndex(c => c.domain === _.domain);
+              if (idx !== undefined && idx !== -1) {
+                handleRemoveCert(idx);
+              }
+            }}
+            icon={<FiTrash2 />}
+          />
+        </div>
+      )
+    }
+  ]
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>HTTPS 证书</CardTitle>
+          <div className="text-sm text-muted-foreground mt-2">
+            为站点 {site?.hostname || '-'} 选择已上传的 SSL 证书，并可配置自动申请证书的域名列表。
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="space-y-4">
+            <h3 className="text-lg font-medium">已上传证书（匹配站点域名）</h3>
+            {filteredCerts.length === 0 ? (
+              <div className="p-8 text-center text-muted-foreground border rounded-lg border-dashed">
+                没有找到匹配的证书，请先在证书管理中上传。
+              </div>
+            ) : (
+              <Table
+                columns={uploadedCertColumns}
+                data={filteredCerts}
+                rowKey="id"
+              />
+            )}
+            <div className="text-sm text-muted-foreground bg-muted/30 p-3 rounded-md">
+              当前状态：
+              <span className={config.dataPlane?.enableHttps ? 'text-green-500 font-medium ml-2' : 'text-yellow-500 font-medium ml-2'}>
+                {config.dataPlane?.enableHttps ? 'HTTPS 已启用' : 'HTTPS 未启用'}
+              </span>
+              {selectedCert 
+                ? <span className="ml-2">，使用证书「{selectedCert.name}」</span>
+                : config.dataPlane?.certId ? <span className="ml-2 text-red-400">，证书未匹配到站点域名</span> : ''}
+            </div>
+          </div>
+
+          <div className="space-y-4 pt-4 border-t">
+            <h3 className="text-lg font-medium">自动申请证书域名</h3>
+            <Table
+              columns={autoCertColumns}
+              data={config.certificates || []}
+              rowKey={(row: Certificate) => row.domain || ''}
+              emptyText="暂无证书配置"
+            />
+          </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }

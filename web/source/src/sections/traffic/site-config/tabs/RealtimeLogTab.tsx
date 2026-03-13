@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react'
+import { FiRefreshCw, FiPlay, FiPause, FiTrash2, FiSearch } from 'react-icons/fi'
 import type { SiteLogEntry, SiteLogKind, SiteLogStream } from '../../../../admin/types'
+import { Card, CardContent, CardHeader, CardTitle } from '../../../../components/ui/Card'
+import { Input } from '../../../../components/ui/Input'
+import { Select } from '../../../../components/ui/Select'
+import { Button } from '../../../../components/ui/Button'
+import { Badge, type BadgeVariant } from '../../../../components/ui/Badge'
 
 type RealtimeLogTabProps = {
   siteId: string
@@ -75,90 +81,164 @@ export function RealtimeLogTab({
     return () => clearInterval(timer)
   }, [isLogConnected, loadLogHistory, queryParams])
 
+  const getLevelBadgeVariant = (level: string): BadgeVariant => {
+    switch (level.toLowerCase()) {
+      case 'error': return 'error'
+      case 'warn': return 'warning'
+      case 'info': return 'primary'
+      case 'debug': return 'default' // Changed from secondary to default as per BadgeVariant
+      default: return 'default'
+    }
+  }
+
   return (
-    <div className="panel">
-      <h4>实时日志</h4>
-      <div className="form-field">
-        <label>日志过滤规则 (Filter Query)</label>
-        <div style={{ display: 'flex', gap: '10px' }}>
-          <input 
-            className="input" 
-            value={logStream?.filter_query || ''}
-            onChange={e => setLogStream(prev => prev ? ({ ...prev, filter_query: e.target.value }) : { site_id: siteId, filter_query: e.target.value })}
-            placeholder="e.g. level=error"
-          />
-          <button 
-            className="button secondary"
-            onClick={handleUpdateLogStream}
-            disabled={loading}
-          >
-            更新规则
-          </button>
-        </div>
-      </div>
-
-      <div className="form-field">
-        <label>日志筛选</label>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '10px' }}>
-          <select className="input" value={kind} onChange={e => setKind(e.target.value as SiteLogKind)}>
-            <option value="all">全部类型</option>
-            <option value="traffic">流量日志</option>
-            <option value="system">系统日志</option>
-          </select>
-          <select className="input" value={level} onChange={e => setLevel(e.target.value)}>
-            <option value="">全部等级</option>
-            <option value="debug">debug</option>
-            <option value="info">info</option>
-            <option value="warn">warn</option>
-            <option value="error">error</option>
-          </select>
-          <input
-            className="input"
-            type="number"
-            min={1}
-            max={500}
-            value={limit}
-            onChange={e => setLimit(Number(e.target.value) || 100)}
-            placeholder="条数"
-          />
-          <input className="input" type="datetime-local" value={startTime} onChange={e => setStartTime(e.target.value)} />
-          <input className="input" type="datetime-local" value={endTime} onChange={e => setEndTime(e.target.value)} />
-          <button className="button secondary" onClick={handleQuery} disabled={loading || querying}>
-            {querying ? '查询中...' : '查询历史'}
-          </button>
-        </div>
-      </div>
-
-      <div className="log-controls" style={{ margin: '15px 0', display: 'flex', gap: '10px' }}>
-        <button 
-          className={`button ${isLogConnected ? 'danger' : 'primary'}`}
-          onClick={() => setIsLogConnected(!isLogConnected)}
-        >
-          {isLogConnected ? '断开连接' : '连接日志流'}
-        </button>
-        <button 
-          className="button secondary"
-          onClick={() => setLogs([])}
-        >
-          清空日志
-        </button>
-      </div>
-
-      <div className="log-viewer">
-        {logs.length === 0 ? (
-          <div className="log-empty">等待日志数据...</div>
-        ) : (
-          logs.map(log => (
-            <div key={log.id} className="log-line">
-              [{log.created_at}] [{log.kind}] [{log.level}] {log.message}
-              {log.method ? ` ${log.method}` : ''}
-              {log.path ? ` ${log.path}` : ''}
-              {log.status_code ? ` ${log.status_code}` : ''}
-              {log.latency_ms ? ` ${log.latency_ms}ms` : ''}
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>实时日志</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="space-y-4">
+            <div className="flex flex-col gap-2">
+              <label className="text-sm font-medium">日志过滤规则 (Filter Query)</label>
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <Input 
+                    value={logStream?.filter_query || ''}
+                    onChange={e => setLogStream(prev => prev ? ({ ...prev, filter_query: e.target.value }) : { site_id: siteId, filter_query: e.target.value })}
+                    placeholder="e.g. level=error"
+                  />
+                </div>
+                <Button 
+                  variant="secondary"
+                  onClick={handleUpdateLogStream}
+                  disabled={loading}
+                  icon={<FiRefreshCw className={loading ? "animate-spin" : ""} />}
+                >
+                  更新规则
+                </Button>
+              </div>
             </div>
-          ))
-        )}
-      </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 items-end">
+              <div className="lg:col-span-1">
+                <Select
+                  label="日志类型"
+                  value={kind} 
+                  onChange={e => setKind(e.target.value as SiteLogKind)}
+                  options={[
+                    { value: "all", label: "全部类型" },
+                    { value: "traffic", label: "流量日志" },
+                    { value: "system", label: "系统日志" }
+                  ]}
+                />
+              </div>
+              <div className="lg:col-span-1">
+                <Select
+                  label="日志等级"
+                  value={level}
+                  onChange={e => setLevel(e.target.value)}
+                  options={[
+                    { value: "", label: "全部等级" },
+                    { value: "debug", label: "debug" },
+                    { value: "info", label: "info" },
+                    { value: "warn", label: "warn" },
+                    { value: "error", label: "error" }
+                  ]}
+                />
+              </div>
+              <div className="lg:col-span-1">
+                <Input
+                  label="条数限制"
+                  type="number"
+                  min={1}
+                  max={500}
+                  value={limit}
+                  onChange={e => setLimit(Number(e.target.value) || 100)}
+                  placeholder="条数"
+                />
+              </div>
+              <div className="lg:col-span-1">
+                <Input 
+                  label="开始时间"
+                  type="datetime-local" 
+                  value={startTime} 
+                  onChange={e => setStartTime(e.target.value)} 
+                />
+              </div>
+              <div className="lg:col-span-1">
+                <Input 
+                  label="结束时间"
+                  type="datetime-local" 
+                  value={endTime} 
+                  onChange={e => setEndTime(e.target.value)} 
+                />
+              </div>
+              <div className="lg:col-span-1">
+                <Button 
+                  className="w-full"
+                  variant="secondary" 
+                  onClick={handleQuery} 
+                  disabled={loading || querying}
+                  icon={<FiSearch />}
+                >
+                  {querying ? '查询中...' : '查询历史'}
+                </Button>
+              </div>
+            </div>
+
+            <div className="flex gap-2 pt-2 border-t">
+              <Button 
+                variant={isLogConnected ? 'danger' : 'primary'}
+                size="sm"
+                onClick={() => setIsLogConnected(!isLogConnected)}
+                icon={isLogConnected ? <FiPause /> : <FiPlay />}
+              >
+                {isLogConnected ? '断开连接' : '连接日志流'}
+              </Button>
+              <Button 
+                variant="secondary"
+                onClick={() => setLogs([])}
+                icon={<FiTrash2 />}
+              >
+                清空日志
+              </Button>
+            </div>
+
+            <div className="border rounded-md bg-muted/50 font-mono text-xs h-[500px] overflow-auto p-4 space-y-1">
+              {logs.length === 0 ? (
+                <div className="text-center text-muted-foreground py-20">等待日志数据...</div>
+              ) : (
+                logs.map(log => (
+                  <div key={log.id} className="hover:bg-muted/50 p-1 rounded flex gap-2 break-all">
+                    <span className="text-muted-foreground shrink-0 w-[140px]">{new Date(log.created_at).toLocaleString()}</span>
+                    <Badge variant="default" className="h-5 px-1 text-[10px] uppercase shrink-0 w-[60px] justify-center">
+                      {log.kind}
+                    </Badge>
+                    <Badge 
+                      variant={getLevelBadgeVariant(log.level)} 
+                      className="h-5 px-1 text-[10px] uppercase shrink-0 w-[50px] justify-center"
+                    >
+                      {log.level}
+                    </Badge>
+                    <span className="flex-1">
+                      {log.message}
+                      {log.method && <span className="ml-2 text-primary">{log.method}</span>}
+                      {log.path && <span className="ml-1 text-muted-foreground">{log.path}</span>}
+                      {log.status_code && (
+                        <span className={`ml-2 ${log.status_code >= 400 ? 'text-destructive' : 'text-green-500'}`}>
+                          {log.status_code}
+                        </span>
+                      )}
+                      {log.latency_ms && <span className="ml-2 text-muted-foreground">{log.latency_ms}ms</span>}
+                    </span>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }

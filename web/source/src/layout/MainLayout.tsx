@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
-import { FiActivity, FiEye, FiLock, FiShuffle, FiSliders } from 'react-icons/fi'
-import { Sidebar } from '../components/Sidebar'
+import { FiActivity, FiEye, FiLock, FiShuffle, FiSliders, FiLayers } from 'react-icons/fi'
+import { Sidebar, type SidebarItem } from '../components/Sidebar'
 import { TopBar } from '../components/TopBar'
 
 type MainLayoutProps = {
@@ -13,16 +13,16 @@ type MainLayoutProps = {
   statusMessage: string
 }
 
-const menuItems = [
-  { key: 'dashboard', label: '仪表盘', icon: <FiActivity /> },
-  { key: 'traffic', label: '流量管理', icon: <FiShuffle /> },
-  { key: 'certificates', label: '证书管理', icon: <FiLock /> },
-  { key: 'observability', label: '观测中心', icon: <FiEye /> },
-  { key: 'system', label: '系统设置', icon: <FiSliders /> },
+const menuItems: SidebarItem[] = [
+  { key: 'dashboard', label: '仪表盘', icon: <FiActivity />, group: 'Overview' },
+  { key: 'traffic', label: '流量管理', icon: <FiShuffle />, group: 'Traffic' },
+  { key: 'certificates', label: '证书管理', icon: <FiLock />, group: 'Traffic' },
+  { key: 'observability', label: '观测中心', icon: <FiEye />, group: 'System' },
+  { key: 'system', label: '系统设置', icon: <FiSliders />, group: 'System' },
+  { key: 'uidemo', label: 'UI Demo', icon: <FiLayers />, group: 'System' },
 ]
 
 export function MainLayout({
-  token,
   onLogout,
   children,
   activeSection,
@@ -54,6 +54,10 @@ export function MainLayout({
         title: '系统设置',
         subtitle: '运行参数与管理能力的集中配置',
       },
+      uidemo: {
+        title: 'UI Component Demo',
+        subtitle: 'Showcase of reusable UI components and layouts',
+      },
     }
     return headers[activeSection] || {
       title: 'BFF 负载均衡网关管理端',
@@ -72,6 +76,13 @@ export function MainLayout({
     return count
   }, [errorMessage, statusMessage])
 
+  const breadcrumbs = useMemo(() => {
+    const currentItem = menuItems.find(item => item.key === activeSection);
+    return [
+      { label: currentItem?.label || activeSection }
+    ];
+  }, [activeSection]);
+
   return (
     <div className={`app-shell ${sidebarCollapsed ? 'collapsed' : ''}`}>
       <Sidebar
@@ -85,7 +96,7 @@ export function MainLayout({
         <TopBar
           onLogout={onLogout}
           notificationCount={notificationCount}
-          isLoggedIn={Boolean(token)}
+          breadcrumbs={breadcrumbs}
         />
         <main className="main">
           <div>
@@ -98,17 +109,8 @@ export function MainLayout({
             </div>
           )}
           {statusMessage && (
-            <div className="success-banner" role="status" aria-live="polite">
+            <div className="success-banner" role="status">
               {statusMessage}
-            </div>
-          )}
-          {!token && (
-            <div className="card">
-              <div className="card-header">
-                <h3 className="card-title">登录状态</h3>
-                <span className="pill">POST /admin/api/v1/login</span>
-              </div>
-              <div className="muted">请先在系统设置中完成登录，启用受保护接口的读取</div>
             </div>
           )}
           {children}

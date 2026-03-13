@@ -1,6 +1,11 @@
-import { Fragment, useState } from 'react'
-import { FiChevronDown, FiChevronRight, FiTrash2 } from 'react-icons/fi'
+import { useState } from 'react'
+import { FiChevronDown, FiChevronRight, FiTrash2, FiPlus, FiAlertCircle } from 'react-icons/fi'
 import type { Config, LBNode, LBPool, LBRouteRule } from '../../../../admin/types'
+import { Card, CardContent, CardHeader, CardTitle } from '../../../../components/ui/Card'
+import { Button } from '../../../../components/ui/Button'
+import { Input } from '../../../../components/ui/Input'
+import { Select } from '../../../../components/ui/Select'
+import { Badge } from '../../../../components/ui/Badge'
 
 type ProxyRulesTabProps = {
   config: Config
@@ -18,14 +23,8 @@ type ProxyRulesTabProps = {
 export function ProxyRulesTab({
   config,
   updateConfig,
-  newPool,
-  setNewPool,
-  newRoute,
-  setNewRoute,
   handleAddPool,
   handleRemovePool,
-  handleAddRoute,
-  handleRemoveRoute,
 }: ProxyRulesTabProps) {
   const pools = config.loadBalancer?.pools || []
   const routes = config.loadBalancer?.routes || []
@@ -228,12 +227,12 @@ export function ProxyRulesTab({
         return null
       }
       return {
-        id,
+        value: id,
         label: pool.name ? `${pool.name} (${id})` : id,
         key: `${id}-${index}`,
       }
     })
-    .filter((item): item is { id: string; label: string; key: string } => Boolean(item))
+    .filter((item): item is { value: string; label: string; key: string } => Boolean(item))
 
   const poolErrors = validatePools(pools)
   const nodeErrorsByPool = pools.map(pool => validateNodes(pool.nodes || []))
@@ -247,26 +246,7 @@ export function ProxyRulesTab({
   const defaultPoolError = defaultPoolID && !poolIDSet.has(defaultPoolID)
     ? '默认流量池不存在'
     : ''
-  const newRouteDomain = (newRoute.domain || '').trim()
-  const newRoutePoolID = (newRoute.poolId || '').trim()
-  const newRouteFallbackPoolID = (newRoute.fallbackPoolId || '').trim()
-  const newRouteErrors = {
-    domain: !newRouteDomain ? '域名不能为空' : '',
-    poolId: !newRoutePoolID
-      ? '主池不能为空'
-      : (poolIDSet.has(newRoutePoolID) ? '' : '主池不存在'),
-    fallbackPoolId: !newRouteFallbackPoolID
-      ? ''
-      : (poolIDSet.has(newRouteFallbackPoolID) ? '' : '回退池不存在'),
-  }
-  const newRouteTouched = Boolean(newRouteDomain || newRoutePoolID || newRouteFallbackPoolID)
-  const canAddRoute = Boolean(
-    newRouteDomain &&
-    newRoutePoolID &&
-    !newRouteErrors.domain &&
-    !newRouteErrors.poolId &&
-    !newRouteErrors.fallbackPoolId,
-  )
+
   const summaryItems: string[] = []
   if (defaultPoolError) {
     summaryItems.push(`默认流量池: ${defaultPoolError}`)
@@ -302,542 +282,279 @@ export function ProxyRulesTab({
   })
 
   return (
-    <div className="panel">
+    <div className="space-y-6">
       {summaryItems.length > 0 && (
-        <div className="alert error" style={{ marginBottom: 20 }}>
-          <div style={{ marginBottom: 8, fontWeight: 600 }}>当前配置存在以下问题：</div>
-          {summaryItems.map((item, index) => (
-            <div key={`${item}-${index}`}>- {item}</div>
-          ))}
+        <div className="bg-destructive/10 border border-destructive/20 text-destructive p-4 rounded-md flex items-start gap-3">
+          <FiAlertCircle className="mt-0.5 shrink-0" size={18} />
+          <div>
+            <div className="font-semibold mb-2">当前配置存在以下问题：</div>
+            <ul className="list-disc pl-5 space-y-1 text-sm">
+              {summaryItems.map((item, index) => (
+                <li key={`${item}-${index}`}>{item}</li>
+              ))}
+            </ul>
+          </div>
         </div>
       )}
-      <h4>默认流量池</h4>
-      <div className="form-field">
-        <label>Default Pool ID</label>
-        <select
-          className="select"
-          value={config.loadBalancer?.defaultPoolId || ''}
-          onChange={(e) => updateConfig(prev => ({
-            ...prev,
-            loadBalancer: {
-              ...prev.loadBalancer,
-              defaultPoolId: e.target.value,
-            },
-          }))}
-        >
-          <option value="">不设置默认池</option>
-          {poolSelectOptions.map(item => (
-            <option key={item.key} value={item.id}>
-              {item.label}
-            </option>
-          ))}
-        </select>
-        {defaultPoolError && (
-          <div style={{ marginTop: 6, color: '#ef4444', fontSize: 12 }}>
-            {defaultPoolError}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>默认流量池</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="max-w-md">
+            <Select
+              label="Default Pool ID"
+              options={[
+                { value: "", label: "不设置默认池" },
+                ...poolSelectOptions
+              ]}
+              value={config.loadBalancer?.defaultPoolId || ''}
+              onChange={(e) => updateConfig(prev => ({
+                ...prev,
+                loadBalancer: {
+                  ...prev.loadBalancer,
+                  defaultPoolId: e.target.value,
+                },
+              }))}
+              error={defaultPoolError}
+            />
           </div>
-        )}
-      </div>
+        </CardContent>
+      </Card>
 
-      <div className="divider" />
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>流量池配置</CardTitle>
+          <Button onClick={handleAddPool} icon={<FiPlus />}>
+            添加流量池
+          </Button>
+        </CardHeader>
+        <CardContent>
+          <div className="border rounded-md divide-y">
+            {pools.length === 0 ? (
+              <div className="p-8 text-center text-muted-foreground">暂无流量池配置</div>
+            ) : (
+              pools.map((pool, index) => {
+                const draft = readNodeDraft(pool, index)
+                const poolKey = buildPoolDraftKey(pool, index)
+                const expanded = Boolean(expandedPoolKeys[poolKey])
+                const nodes = pool.nodes || []
+                const nodeErrors = nodeErrorsByPool[index] || validateNodes(nodes)
+                const poolError = poolErrors[index]
+                const draftNodeID = (draft.id || '').trim()
+                const draftUpstream = (draft.upstream || '').trim()
+                const draftWeight = Number(draft.weight ?? 0)
+                
+                const draftErrors = {
+                  id: '',
+                  upstream: '',
+                  weight: '',
+                }
+                if (draftNodeID) {
+                  const duplicated = nodes.some(node => (node.id || '').trim() === draftNodeID)
+                  if (duplicated) {
+                    draftErrors.id = '节点ID重复'
+                  }
+                }
+                if (draftUpstream && !isURLValid(draftUpstream)) {
+                  draftErrors.upstream = '上游地址格式无效'
+                }
+                if (draft.weight !== undefined && (draftWeight <= 0 || Number.isNaN(draftWeight))) {
+                  draftErrors.weight = '权重必须大于0'
+                }
+                
+                const canAddNode = Boolean(
+                  draftNodeID &&
+                  draftUpstream &&
+                  !draftErrors.id &&
+                  !draftErrors.upstream &&
+                  !draftErrors.weight,
+                )
 
-      <h4>流量池</h4>
-      <table className="table">
-        <thead>
-          <tr>
-            <th>池ID</th>
-            <th>池名称</th>
-            <th>策略</th>
-            <th>节点数</th>
-            <th style={{ textAlign: 'right' }}>操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          {pools.map((pool, index) => {
-            const draft = readNodeDraft(pool, index)
-            const poolKey = buildPoolDraftKey(pool, index)
-            const expanded = Boolean(expandedPoolKeys[poolKey])
-            const nodes = pool.nodes || []
-            const nodeErrors = nodeErrorsByPool[index] || validateNodes(nodes)
-            const poolError = poolErrors[index]
-            const draftNodeID = (draft.id || '').trim()
-            const draftUpstream = (draft.upstream || '').trim()
-            const draftWeight = Number(draft.weight ?? 0)
-            const draftErrors = {
-              id: '',
-              upstream: '',
-              weight: '',
-            }
-            if (draftNodeID) {
-              const duplicated = nodes.some(node => (node.id || '').trim() === draftNodeID)
-              if (duplicated) {
-                draftErrors.id = '节点ID重复'
-              }
-            }
-            if (draftUpstream && !isURLValid(draftUpstream)) {
-              draftErrors.upstream = '上游地址格式无效'
-            }
-            if (draft.weight !== undefined && (draftWeight <= 0 || Number.isNaN(draftWeight))) {
-              draftErrors.weight = '权重必须大于0'
-            }
-            const canAddNode = Boolean(
-              draftNodeID &&
-              draftUpstream &&
-              !draftErrors.id &&
-              !draftErrors.upstream &&
-              !draftErrors.weight,
-            )
-            return (
-              <Fragment key={`group-${poolKey}-${index}`}>
-                <tr>
-              <td>
-                <input
-                  className="input small"
-                  value={pool.id || ''}
-                  onChange={e => {
-                    writePool(index, currentPool => ({
-                      ...currentPool,
-                      id: e.target.value,
-                    }))
-                  }}
-                />
-                {poolError?.id && (
-                  <div style={{ marginTop: 6, color: '#ef4444', fontSize: 12 }}>
-                    {poolError.id}
-                  </div>
-                )}
-              </td>
-              <td>
-                <input
-                  className="input small"
-                  value={pool.name || ''}
-                  onChange={e => {
-                    writePool(index, currentPool => ({
-                      ...currentPool,
-                      name: e.target.value,
-                    }))
-                  }}
-                />
-              </td>
-              <td>
-                <select
-                  className="select small"
-                  value={pool.strategy || 'weighted_rr'}
-                  onChange={e => {
-                    writePool(index, currentPool => ({
-                      ...currentPool,
-                      strategy: e.target.value,
-                    }))
-                  }}
-                >
-                  <option value="weighted_rr">weighted_rr</option>
-                </select>
-              </td>
-              <td>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                  <span>{pool.nodes?.length || 0}</span>
-                  <button
-                    className="button secondary small"
-                    onClick={() => togglePoolExpanded(pool, index)}
-                  >
-                    {expanded ? <FiChevronDown /> : <FiChevronRight />}
-                    {expanded ? '收起' : '展开'}
-                  </button>
-                </div>
-              </td>
-              <td style={{ textAlign: 'right' }}>
-                <button className="button danger small" onClick={() => removePoolWithState(pool, index)}>
-                  <FiTrash2 />
-                </button>
-              </td>
-            </tr>
-                {expanded && (
-                <tr>
-                <td colSpan={5} style={{ background: 'var(--bg-page)' }}>
-                  <div className="muted" style={{ marginBottom: 10 }}>
-                    节点配置
-                  </div>
-                  <table className="table">
-                    <thead>
-                      <tr>
-                        <th style={{ width: '20%' }}>节点ID</th>
-                        <th style={{ width: '40%' }}>上游地址</th>
-                        <th style={{ width: '12%' }}>权重</th>
-                        <th style={{ width: '12%' }}>启用</th>
-                        <th style={{ textAlign: 'right' }}>操作</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {nodes.map((node, nodeIndex) => (
-                        <tr key={`${buildPoolDraftKey(pool, index)}-${nodeIndex}`}>
-                          <td>
-                            <input
-                              className="input small"
-                              value={node.id || ''}
-                              onChange={e => {
-                                writePool(index, currentPool => {
-                                  const nextNodes = [...(currentPool.nodes || [])]
-                                  nextNodes[nodeIndex] = { ...node, id: e.target.value }
-                                  return { ...currentPool, nodes: nextNodes }
-                                })
-                              }}
-                            />
-                            {nodeErrors[nodeIndex]?.id && (
-                              <div style={{ marginTop: 6, color: '#ef4444', fontSize: 12 }}>
-                                {nodeErrors[nodeIndex].id}
-                              </div>
-                            )}
-                          </td>
-                          <td>
-                            <input
-                              className="input small"
-                              value={node.upstream || ''}
-                              onChange={e => {
-                                writePool(index, currentPool => {
-                                  const nextNodes = [...(currentPool.nodes || [])]
-                                  nextNodes[nodeIndex] = { ...node, upstream: e.target.value }
-                                  return { ...currentPool, nodes: nextNodes }
-                                })
-                              }}
-                            />
-                            {nodeErrors[nodeIndex]?.upstream && (
-                              <div style={{ marginTop: 6, color: '#ef4444', fontSize: 12 }}>
-                                {nodeErrors[nodeIndex].upstream}
-                              </div>
-                            )}
-                          </td>
-                          <td>
-                            <input
-                              className="input small"
-                              type="number"
-                              min={1}
-                              value={node.weight ?? 1}
-                              onChange={e => {
-                                writePool(index, currentPool => {
-                                  const nextNodes = [...(currentPool.nodes || [])]
-                                  nextNodes[nodeIndex] = {
-                                    ...node,
-                                    weight: Number(e.target.value) > 0 ? Number(e.target.value) : 1,
-                                  }
-                                  return { ...currentPool, nodes: nextNodes }
-                                })
-                              }}
-                            />
-                            {nodeErrors[nodeIndex]?.weight && (
-                              <div style={{ marginTop: 6, color: '#ef4444', fontSize: 12 }}>
-                                {nodeErrors[nodeIndex].weight}
-                              </div>
-                            )}
-                          </td>
-                          <td>
-                            <select
-                              className="select small"
-                              value={node.enabled === false ? 'false' : 'true'}
-                              onChange={e => {
-                                writePool(index, currentPool => {
-                                  const nextNodes = [...(currentPool.nodes || [])]
-                                  nextNodes[nodeIndex] = {
-                                    ...node,
-                                    enabled: e.target.value === 'true',
-                                  }
-                                  return { ...currentPool, nodes: nextNodes }
-                                })
-                              }}
-                            >
-                              <option value="true">是</option>
-                              <option value="false">否</option>
-                            </select>
-                          </td>
-                          <td style={{ textAlign: 'right' }}>
-                            <button
-                              className="button danger small"
-                              onClick={() => {
-                                writePool(index, currentPool => ({
-                                  ...currentPool,
-                                  nodes: (currentPool.nodes || []).filter((_, i) => i !== nodeIndex),
-                                }))
-                              }}
-                            >
-                              <FiTrash2 />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                      <tr>
-                        <td>
-                          <input
-                            className="input small"
-                            placeholder="新增节点ID"
-                            value={draft.id || ''}
-                            onChange={e => writeNodeDraft(pool, index, prev => ({ ...prev, id: e.target.value }))}
-                          />
-                          {draftErrors.id && (
-                            <div style={{ marginTop: 6, color: '#ef4444', fontSize: 12 }}>
-                              {draftErrors.id}
-                            </div>
-                          )}
-                        </td>
-                        <td>
-                          <input
-                            className="input small"
-                            placeholder="http://127.0.0.1:8080"
-                            value={draft.upstream || ''}
-                            onChange={e => writeNodeDraft(pool, index, prev => ({ ...prev, upstream: e.target.value }))}
-                          />
-                          {draftErrors.upstream && (
-                            <div style={{ marginTop: 6, color: '#ef4444', fontSize: 12 }}>
-                              {draftErrors.upstream}
-                            </div>
-                          )}
-                        </td>
-                        <td>
-                          <input
-                            className="input small"
-                            type="number"
-                            min={1}
-                            value={draft.weight ?? 1}
-                            onChange={e => {
-                              const weight = Number(e.target.value)
-                              writeNodeDraft(pool, index, prev => ({
-                                ...prev,
-                                weight: weight > 0 ? weight : 1,
-                              }))
-                            }}
-                          />
-                          {draftErrors.weight && (
-                            <div style={{ marginTop: 6, color: '#ef4444', fontSize: 12 }}>
-                              {draftErrors.weight}
-                            </div>
-                          )}
-                        </td>
-                        <td>
-                          <select
-                            className="select small"
-                            value={draft.enabled === false ? 'false' : 'true'}
-                            onChange={e => writeNodeDraft(pool, index, prev => ({
-                              ...prev,
-                              enabled: e.target.value === 'true',
+                return (
+                  <div key={`group-${poolKey}-${index}`} className="bg-card">
+                    <div className="p-4 flex items-center gap-4">
+                      <div className="flex-1 grid grid-cols-12 gap-4 items-center">
+                        <div className="col-span-3">
+                          <Input
+                            placeholder="池ID"
+                            value={pool.id || ''}
+                            onChange={e => writePool(index, currentPool => ({
+                              ...currentPool,
+                              id: e.target.value,
                             }))}
+                            error={poolError?.id}
+                          />
+                        </div>
+                        <div className="col-span-3">
+                          <Input
+                            placeholder="池名称"
+                            value={pool.name || ''}
+                            onChange={e => writePool(index, currentPool => ({
+                              ...currentPool,
+                              name: e.target.value,
+                            }))}
+                          />
+                        </div>
+                        <div className="col-span-3">
+                          <Select
+                            options={[{ value: "weighted_rr", label: "weighted_rr" }]}
+                            value={pool.strategy || 'weighted_rr'}
+                            onChange={e => writePool(index, currentPool => ({
+                              ...currentPool,
+                              strategy: e.target.value,
+                            }))}
+                          />
+                        </div>
+                        <div className="col-span-3 flex items-center justify-end gap-2">
+                        <Badge variant="default">{pool.nodes?.length || 0} 节点</Badge>
+                        <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => togglePoolExpanded(pool, index)}
+                            icon={expanded ? <FiChevronDown /> : <FiChevronRight />}
                           >
-                            <option value="true">是</option>
-                            <option value="false">否</option>
-                          </select>
-                        </td>
-                        <td style={{ textAlign: 'right' }}>
-                          <button className="button secondary small" onClick={() => addPoolNode(index)} disabled={!canAddNode}>
-                            添加节点
-                          </button>
-                        </td>
-                      </tr>
-                      {nodes.length === 0 && (
-                        <tr>
-                          <td colSpan={5} className="muted" style={{ textAlign: 'center' }}>
-                            当前池暂无节点，至少添加一个可用节点后再保存配置
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </td>
-              </tr>
-                )}
-              </Fragment>
-            )
-          })}
-        </tbody>
-      </table>
-      
-      <div className="form-row" style={{ marginTop: 15 }}>
-        <div className="form-field">
-          <input
-            className="input"
-            placeholder="新增池ID"
-            value={newPool.id || ''}
-            onChange={e => setNewPool({ ...newPool, id: e.target.value })}
-          />
-        </div>
-        <div className="form-field">
-          <input
-            className="input"
-            placeholder="新增池名称"
-            value={newPool.name || ''}
-            onChange={e => setNewPool({ ...newPool, name: e.target.value })}
-          />
-        </div>
-        <button className="button secondary" onClick={handleAddPool}>添加流量池</button>
-      </div>
-
-      <div className="divider" />
-
-      <h4>域名绑定规则</h4>
-      <table className="table">
-        <thead>
-          <tr>
-            <th>域名</th>
-            <th>主池</th>
-            <th>回退池</th>
-            <th>HTTPS</th>
-            <th style={{ textAlign: 'right' }}>操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          {routes.map((rule, index) => {
-            const routeError = routeErrors[index]
-            return (
-            <tr key={index}>
-              <td>
-                <input
-                  className="input small"
-                  value={rule.domain || ''}
-                  onChange={e => {
-                    const next = [...routes]
-                    next[index] = { ...rule, domain: e.target.value }
-                    updateConfig(prev => ({
-                      ...prev,
-                      loadBalancer: { ...prev.loadBalancer, routes: next },
-                    }))
-                  }}
-                />
-                {routeError?.domain && (
-                  <div style={{ marginTop: 6, color: '#ef4444', fontSize: 12 }}>
-                    {routeError.domain}
+                            {expanded ? '收起' : '展开'}
+                          </Button>
+                          <Button
+                            variant="danger"
+                            size="sm"
+                            onClick={() => removePoolWithState(pool, index)}
+                            icon={<FiTrash2 />}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {expanded && (
+                      <div className="bg-muted/30 p-4 border-t">
+                        <div className="mb-4 text-sm font-medium text-muted-foreground">节点列表</div>
+                        <div className="space-y-2">
+                          {nodes.map((node, nodeIndex) => (
+                            <div key={`${buildPoolDraftKey(pool, index)}-${nodeIndex}`} className="grid grid-cols-12 gap-2 items-start">
+                              <div className="col-span-3">
+                                <Input
+                                  placeholder="节点ID"
+                                  value={node.id || ''}
+                                  onChange={e => writePool(index, currentPool => {
+                                    const nextNodes = [...(currentPool.nodes || [])]
+                                    nextNodes[nodeIndex] = { ...node, id: e.target.value }
+                                    return { ...currentPool, nodes: nextNodes }
+                                  })}
+                                  error={nodeErrors[nodeIndex]?.id}
+                                />
+                              </div>
+                              <div className="col-span-5">
+                                <Input
+                                  placeholder="上游地址 (http://...)"
+                                  value={node.upstream || ''}
+                                  onChange={e => writePool(index, currentPool => {
+                                    const nextNodes = [...(currentPool.nodes || [])]
+                                    nextNodes[nodeIndex] = { ...node, upstream: e.target.value }
+                                    return { ...currentPool, nodes: nextNodes }
+                                  })}
+                                  error={nodeErrors[nodeIndex]?.upstream}
+                                />
+                              </div>
+                              <div className="col-span-2">
+                                <Input
+                                  type="number"
+                                  placeholder="权重"
+                                  min={1}
+                                  value={node.weight ?? 1}
+                                  onChange={e => writePool(index, currentPool => {
+                                    const nextNodes = [...(currentPool.nodes || [])]
+                                    nextNodes[nodeIndex] = {
+                                      ...node,
+                                      weight: Number(e.target.value) > 0 ? Number(e.target.value) : 1,
+                                    }
+                                    return { ...currentPool, nodes: nextNodes }
+                                  })}
+                                  error={nodeErrors[nodeIndex]?.weight}
+                                />
+                              </div>
+                              <div className="col-span-1">
+                                <Select
+                                  options={[
+                                    { value: "true", label: "是" },
+                                    { value: "false", label: "否" }
+                                  ]}
+                                  value={node.enabled === false ? 'false' : 'true'}
+                                  onChange={e => writePool(index, currentPool => {
+                                    const nextNodes = [...(currentPool.nodes || [])]
+                                    nextNodes[nodeIndex] = {
+                                      ...node,
+                                      enabled: e.target.value === 'true',
+                                    }
+                                    return { ...currentPool, nodes: nextNodes }
+                                  })}
+                                />
+                              </div>
+                              <div className="col-span-1 flex justify-end">
+                                <Button
+                                  variant="danger"
+                                  size="sm"
+                                  onClick={() => {
+                                    writePool(index, currentPool => ({
+                                      ...currentPool,
+                                      nodes: (currentPool.nodes || []).filter((_, i) => i !== nodeIndex),
+                                    }))
+                                  }}
+                                  icon={<FiTrash2 />}
+                                />
+                              </div>
+                            </div>
+                          ))}
+                          
+                          {/* Add New Node Row */}
+                          <div className="grid grid-cols-12 gap-2 items-start mt-4 pt-4 border-t border-dashed">
+                            <div className="col-span-3">
+                              <Input
+                                placeholder="新增节点ID"
+                                value={draft.id || ''}
+                                onChange={e => writeNodeDraft(pool, index, prev => ({ ...prev, id: e.target.value }))}
+                                error={draftErrors.id}
+                              />
+                            </div>
+                            <div className="col-span-5">
+                              <Input
+                                placeholder="上游地址"
+                                value={draft.upstream || ''}
+                                onChange={e => writeNodeDraft(pool, index, prev => ({ ...prev, upstream: e.target.value }))}
+                                error={draftErrors.upstream}
+                              />
+                            </div>
+                            <div className="col-span-2">
+                              <Input
+                                type="number"
+                                placeholder="权重"
+                                min={1}
+                                value={draft.weight ?? 1}
+                                onChange={e => writeNodeDraft(pool, index, prev => ({ ...prev, weight: Number(e.target.value) }))}
+                                error={draftErrors.weight}
+                              />
+                            </div>
+                            <div className="col-span-2 flex justify-end">
+                              <Button
+                                disabled={!canAddNode}
+                                onClick={() => addPoolNode(index)}
+                                icon={<FiPlus />}
+                              >
+                                添加节点
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                )}
-              </td>
-              <td>
-                <select
-                  className="select small"
-                  value={rule.poolId || ''}
-                  onChange={e => {
-                    const next = [...routes]
-                    next[index] = { ...rule, poolId: e.target.value }
-                    updateConfig(prev => ({
-                      ...prev,
-                      loadBalancer: { ...prev.loadBalancer, routes: next },
-                    }))
-                  }}
-                >
-                  <option value="">选择主池</option>
-                  {poolSelectOptions.map(item => (
-                    <option key={`main-${item.key}`} value={item.id}>
-                      {item.label}
-                    </option>
-                  ))}
-                </select>
-                {routeError?.poolId && (
-                  <div style={{ marginTop: 6, color: '#ef4444', fontSize: 12 }}>
-                    {routeError.poolId}
-                  </div>
-                )}
-              </td>
-              <td>
-                <select
-                  className="select small"
-                  value={rule.fallbackPoolId || ''}
-                  onChange={e => {
-                    const next = [...routes]
-                    next[index] = { ...rule, fallbackPoolId: e.target.value }
-                    updateConfig(prev => ({
-                      ...prev,
-                      loadBalancer: { ...prev.loadBalancer, routes: next },
-                    }))
-                  }}
-                >
-                  <option value="">不设置</option>
-                  {poolSelectOptions.map(item => (
-                    <option key={`fallback-${item.key}`} value={item.id}>
-                      {item.label}
-                    </option>
-                  ))}
-                </select>
-                {routeError?.fallbackPoolId && (
-                  <div style={{ marginTop: 6, color: '#ef4444', fontSize: 12 }}>
-                    {routeError.fallbackPoolId}
-                  </div>
-                )}
-              </td>
-              <td>
-                <select
-                  className="select small"
-                  value={rule.forceHttps ? 'true' : 'false'}
-                  onChange={e => {
-                    const next = [...routes]
-                    next[index] = { ...rule, forceHttps: e.target.value === 'true' }
-                    updateConfig(prev => ({
-                      ...prev,
-                      loadBalancer: { ...prev.loadBalancer, routes: next },
-                    }))
-                  }}
-                >
-                  <option value="true">开启</option>
-                  <option value="false">关闭</option>
-                </select>
-              </td>
-              <td style={{ textAlign: 'right' }}>
-                <button className="button danger small" onClick={() => handleRemoveRoute(index)}>
-                  <FiTrash2 />
-                </button>
-              </td>
-            </tr>
-            )
-          })}
-        </tbody>
-      </table>
-
-      <div className="form-row" style={{ marginTop: 15 }}>
-        <div className="form-field">
-          <input
-            className="input"
-            placeholder="新增域名"
-            value={newRoute.domain || ''}
-            onChange={e => setNewRoute({ ...newRoute, domain: e.target.value })}
-          />
-          {newRouteTouched && newRouteErrors.domain && (
-            <div style={{ marginTop: 6, color: '#ef4444', fontSize: 12 }}>
-              {newRouteErrors.domain}
-            </div>
-          )}
-        </div>
-        <div className="form-field">
-          <select
-            className="select"
-            value={newRoute.poolId || ''}
-            onChange={e => setNewRoute({ ...newRoute, poolId: e.target.value })}
-          >
-            <option value="">选择主池</option>
-            {poolSelectOptions.map(item => (
-              <option key={`new-main-${item.key}`} value={item.id}>
-                {item.label}
-              </option>
-            ))}
-          </select>
-          {newRouteTouched && newRouteErrors.poolId && (
-            <div style={{ marginTop: 6, color: '#ef4444', fontSize: 12 }}>
-              {newRouteErrors.poolId}
-            </div>
-          )}
-        </div>
-        <div className="form-field">
-          <select
-            className="select"
-            value={newRoute.fallbackPoolId || ''}
-            onChange={e => setNewRoute({ ...newRoute, fallbackPoolId: e.target.value })}
-          >
-            <option value="">不设置回退池</option>
-            {poolSelectOptions.map(item => (
-              <option key={`new-fallback-${item.key}`} value={item.id}>
-                {item.label}
-              </option>
-            ))}
-          </select>
-          {newRouteTouched && newRouteErrors.fallbackPoolId && (
-            <div style={{ marginTop: 6, color: '#ef4444', fontSize: 12 }}>
-              {newRouteErrors.fallbackPoolId}
-            </div>
-          )}
-        </div>
-        <button className="button secondary" onClick={handleAddRoute} disabled={!canAddRoute}>添加绑定</button>
-      </div>
+                )
+              })
+            )}
+          </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }

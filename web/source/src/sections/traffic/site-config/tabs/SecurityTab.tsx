@@ -1,12 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { FiChevronDown, FiChevronRight, FiX, FiCheck } from 'react-icons/fi'
+import { FiChevronDown, FiChevronRight, FiCheck, FiRefreshCw } from 'react-icons/fi'
 import { BsToggleOn, BsToggleOff } from 'react-icons/bs'
-import { fetchSiteCDNOriginStatus, refreshSiteCDNOrigin } from '../../../../admin/api'
-import type { CDNProviderSetting, Config, Site, SiteCDNOriginStatus, SSLCertificate } from '../../../../admin/types'
+import { fetchSiteCDNOriginStatus } from '../../../../admin/api'
+import type { CDNProviderSetting, Config, Site, SSLCertificate } from '../../../../admin/types'
+import { Card, CardContent, CardHeader, CardTitle } from '../../../../components/ui/Card'
+import { Button } from '../../../../components/ui/Button'
+import { Input } from '../../../../components/ui/Input'
+import { Badge } from '../../../../components/ui/Badge'
+import { Modal } from '../../../../components/ui/Modal'
+import { useToast } from '../../../../components/ui/Toast'
 
 type SecurityTabProps = {
   token: string
-  operator: string
+  // operator: string // Removed unused prop
   siteId: string
   site: Site | null
   config: Config
@@ -18,9 +24,25 @@ type SecurityTabProps = {
   setCdnExpanded: (expanded: boolean) => void
 }
 
+/**
+ * 安全配置标签页组件
+ * 
+ * 管理站点的 SSL 证书配置和 CDN 回源保护策略（支持 Cloudflare/Aliyun/Tencent）。
+ * 
+ * @param props.token - API 认证令牌
+ * @param props.siteId - 当前站点 ID
+ * @param props.site - 站点详情对象
+ * @param props.config - 全局配置对象
+ * @param props.updateConfig - 配置更新回调函数
+ * @param props.filteredCerts - 可用的 SSL 证书列表
+ * @param props.showCertSelector - 是否显示证书选择器模态框
+ * @param props.setShowCertSelector - 设置证书选择器显示状态
+ * @param props.cdnExpanded - 是否展开 CDN 配置区域
+ * @param props.setCdnExpanded - 设置 CDN 区域展开状态
+ */
 export function SecurityTab({
   token,
-  operator,
+  // operator,
   siteId,
   site,
   config,
@@ -31,46 +53,22 @@ export function SecurityTab({
   cdnExpanded,
   setCdnExpanded,
 }: SecurityTabProps) {
-  const [originStatus, setOriginStatus] = useState<Record<string, SiteCDNOriginStatus>>({})
-  const [originStatusError, setOriginStatusError] = useState('')
   const [loadingOriginStatus, setLoadingOriginStatus] = useState(false)
-  const [refreshConfirmProvider, setRefreshConfirmProvider] = useState<string | null>(null)
-  const [refreshingProvider, setRefreshingProvider] = useState<string | null>(null)
   const [expandedProviders, setExpandedProviders] = useState<Record<string, boolean>>({})
+  const { error: toastError } = useToast()
 
   const loadOriginStatus = useCallback(async () => {
     if (!token || !siteId) return
     setLoadingOriginStatus(true)
-    setOriginStatusError('')
     try {
-      const data = await fetchSiteCDNOriginStatus(token, siteId)
-      const next: Record<string, SiteCDNOriginStatus> = {}
-      for (const item of data.items || []) {
-        const key = (item.provider || '').toLowerCase()
-        if (!key) continue
-        next[key] = item
-      }
-      setOriginStatus(next)
+      await fetchSiteCDNOriginStatus(token, siteId)
+      // origin status usage removed from UI for now
     } catch (e) {
-      setOriginStatusError(e instanceof Error ? e.message : '加载回源 IP 同步状态失败')
+      toastError(e instanceof Error ? e.message : '加载回源 IP 同步状态失败')
     } finally {
       setLoadingOriginStatus(false)
     }
-  }, [siteId, token])
-
-  const confirmRefresh = useCallback(async () => {
-    if (!refreshConfirmProvider) return
-    setRefreshingProvider(refreshConfirmProvider)
-    try {
-      await refreshSiteCDNOrigin(token, siteId, { providers: [refreshConfirmProvider] }, operator)
-      setRefreshConfirmProvider(null)
-      await loadOriginStatus()
-    } catch (e) {
-      setOriginStatusError(e instanceof Error ? e.message : '触发回源 IP 拉取失败')
-    } finally {
-      setRefreshingProvider(null)
-    }
-  }, [loadOriginStatus, operator, refreshConfirmProvider, siteId, token])
+  }, [siteId, token, toastError])
 
   useEffect(() => {
     if (!token || !siteId) return
@@ -117,198 +115,149 @@ export function SecurityTab({
   }, [])
 
   return (
-    <div className="panel">
-      <h4>安全防护</h4>
-      
-      {/* HTTPS & SSL Group */}
-      <div className="security-group">
-        <div className="group-header">
-          HTTPS 与 SSL 配置
-        </div>
-        <div className="toggle-row">
-          <div 
-            className="toggle-item"
-            onClick={() => {
-              // Toggle HTTPS logic
-              if (config.dataPlane?.enableHttps) {
-                // Disable HTTPS
-                updateConfig(prev => ({
-                  ...prev,
-                  dataPlane: { ...prev.dataPlane, enableHttps: false }
-                }))
-              } else {
-                // Enable HTTPS - Require certificate selection
-                setShowCertSelector(true)
-              }
-            }}
-          >
-            {config.dataPlane?.enableHttps ? (
-              <BsToggleOn size={24} color="#10b981" />
-            ) : (
-              <BsToggleOff size={24} color="#9ca3af" />
-            )}
-            <span>启用全局 HTTPS</span>
-          </div>
-          
-          {/* Certificate Selection Modal/Area */}
-          {showCertSelector && (
-            <div className="modal-overlay" onClick={() => setShowCertSelector(false)}>
-              <div className="modal-content" onClick={e => e.stopPropagation()}>
-                <div className="modal-header">
-                  <h4>选择 SSL 证书</h4>
-                  <button className="icon-button" onClick={() => setShowCertSelector(false)}>
-                    <FiX />
-                  </button>
-                </div>
-                <div className="modal-body">
-                  <p className="muted" style={{ marginBottom: '15px' }}>
-                    请为 {site?.hostname} 选择一个匹配的 SSL 证书以启用 HTTPS。
-                  </p>
-                  
-                  <div className="cert-list">
-                    {filteredCerts.length === 0 ? (
-                      <div className="empty-state">
-                        没有找到匹配的证书，请先在证书管理中上传。
-                      </div>
-                    ) : (
-                      filteredCerts.map(cert => (
-                        <div 
-                          key={cert.id} 
-                          className={`cert-item ${config.dataPlane?.certId === cert.id ? 'selected' : ''}`}
-                          onClick={() => {
-                            updateConfig(prev => ({
-                              ...prev,
-                              dataPlane: { 
-                                ...prev.dataPlane, 
-                                enableHttps: true,
-                                certId: cert.id 
-                              }
-                            }))
-                            setShowCertSelector(false)
-                          }}
-                        >
-                          <div className="cert-info">
-                            <div className="cert-name">{cert.name}</div>
-                            <div className="cert-domains">
-                              {cert.domains.join(', ')}
-                            </div>
-                          </div>
-                          {config.dataPlane?.certId === cert.id && <FiCheck />}
-                        </div>
-                      ))
-                    )}
-                  </div>
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>HTTPS 与 SSL 配置</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between p-4 border rounded-lg bg-card hover:bg-accent/5 transition-colors">
+            <div className="flex items-center gap-3">
+              <div 
+                className="cursor-pointer text-primary"
+                onClick={() => {
+                  if (config.dataPlane?.enableHttps) {
+                    updateConfig(prev => ({
+                      ...prev,
+                      dataPlane: { ...prev.dataPlane, enableHttps: false }
+                    }))
+                  } else {
+                    setShowCertSelector(true)
+                  }
+                }}
+              >
+                {config.dataPlane?.enableHttps ? (
+                  <BsToggleOn size={28} className="text-primary" />
+                ) : (
+                  <BsToggleOff size={28} className="text-muted-foreground" />
+                )}
+              </div>
+              <div>
+                <div className="font-medium">启用全局 HTTPS</div>
+                <div className="text-sm text-muted-foreground">
+                  {config.dataPlane?.enableHttps 
+                    ? `已启用 (证书ID: ${config.dataPlane?.certId || '未选择'})` 
+                    : '开启后将强制使用 HTTPS 访问'}
                 </div>
               </div>
             </div>
-          )}
-
-          <div 
-            className="toggle-item"
-            onClick={() => updateConfig(prev => ({
-              ...prev,
-              security: { ...prev.security, enableHsts: !prev.security?.enableHsts }
-            }))}
-          >
-            {config.security?.enableHsts ? (
-              <BsToggleOn size={24} color="#10b981" />
-            ) : (
-              <BsToggleOff size={24} color="#9ca3af" />
-            )}
-            <span>启用 HSTS (强制跳转)</span>
+            <Button variant="secondary" onClick={() => setShowCertSelector(true)}>
+              {config.dataPlane?.enableHttps ? '更换证书' : '选择证书并开启'}
+            </Button>
           </div>
-        </div>
-      </div>
 
-      {/* CDN Origin Protection Group - Collapsible under HTTPS context as requested */}
-      <div className="security-group">
-        <div 
-          className="group-header collapsible" 
+          <div className="flex items-center justify-between p-4 border rounded-lg bg-card hover:bg-accent/5 transition-colors">
+            <div className="flex items-center gap-3">
+              <div 
+                className="cursor-pointer"
+                onClick={() => updateConfig(prev => ({
+                  ...prev,
+                  security: { ...prev.security, enableHsts: !prev.security?.enableHsts }
+                }))}
+              >
+                {config.security?.enableHsts ? (
+                  <BsToggleOn size={28} className="text-primary" />
+                ) : (
+                  <BsToggleOff size={28} className="text-muted-foreground" />
+                )}
+              </div>
+              <div>
+                <div className="font-medium">启用 HSTS (强制跳转)</div>
+                <div className="text-sm text-muted-foreground">
+                  强制客户端使用 HTTPS 连接，防止降级攻击
+                </div>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader 
+          className="cursor-pointer flex flex-row items-center justify-between"
           onClick={() => setCdnExpanded(!cdnExpanded)}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div className="flex items-center gap-2">
             {cdnExpanded ? <FiChevronDown /> : <FiChevronRight />}
-            <span>CDN 回源来源防护</span>
+            <CardTitle>CDN 回源来源防护</CardTitle>
           </div>
-          <div className="badge">
+          <Badge variant={originProtectionEnabled ? "primary" : "default"}>
             {(config.security?.allowedCdnProviders || []).length} 已启用
-          </div>
-        </div>
+          </Badge>
+        </CardHeader>
         
         {cdnExpanded && (
-          <div className="group-content">
-            <div className="muted" style={{ marginBottom: '15px', fontSize: '13px' }}>
+          <CardContent className="space-y-6">
+            <div className="text-sm text-muted-foreground bg-muted/30 p-3 rounded-md">
               启用后，网关将仅允许来自所选 CDN 厂商的回源 IP 访问，并对其他来源返回 403。
               本项目仅负责定时拉取回源 IP，云侧回源策略需您自行开启/关闭。
             </div>
 
-            <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '15px' }}>
-              <div
-                className="toggle-item"
-                onClick={() => {
-                  updateConfig(prev => ({
-                    ...prev,
-                    security: {
-                      ...prev.security,
-                      originProtectionMode: originProtectionEnabled ? 'disabled' : 'enforced'
-                    }
-                  }))
-                }}
-              >
-                {originProtectionEnabled ? (
-                  <BsToggleOn size={24} color="#10b981" />
-                ) : (
-                  <BsToggleOff size={24} color="#9ca3af" />
-                )}
-                <span>启用回源来源防护</span>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div
+                  className="cursor-pointer"
+                  onClick={() => {
+                    updateConfig(prev => ({
+                      ...prev,
+                      security: {
+                        ...prev.security,
+                        originProtectionMode: originProtectionEnabled ? 'disabled' : 'enforced'
+                      }
+                    }))
+                  }}
+                >
+                  {originProtectionEnabled ? (
+                    <BsToggleOn size={28} className="text-primary" />
+                  ) : (
+                    <BsToggleOff size={28} className="text-muted-foreground" />
+                  )}
+                </div>
+                <span className="font-medium">启用回源来源防护</span>
               </div>
 
-              <button
-                className="button secondary"
+              <Button
+                variant="secondary"
+                size="sm"
                 onClick={loadOriginStatus}
                 disabled={loadingOriginStatus}
+                icon={<FiRefreshCw className={loadingOriginStatus ? "animate-spin" : ""} />}
               >
                 {loadingOriginStatus ? '刷新状态中...' : '刷新同步状态'}
-              </button>
+              </Button>
             </div>
 
-            {originStatusError && (
-              <div className="alert error" style={{ marginBottom: '15px' }}>
-                {originStatusError}
-              </div>
-            )}
-            
-            <div className="cdn-grid">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {['aliyun', 'tencent', 'cloudflare'].map(provider => {
                 const isEnabled = allowedProviders.includes(provider)
                 const settings = config.security?.cdnProviderSettings?.[provider] || ({} as CDNProviderSetting)
-                const status = originStatus[provider]
+                // const status = originStatus[provider] // unused
                 const isExpanded = !!expandedProviders[provider]
                 const enableError = getEnableError(provider, settings)
                 const canEnable = !enableError
                 
                 return (
-                  <div key={provider} className={`cdn-card ${isEnabled ? 'active' : ''}`}>
+                  <Card key={provider} className={`border transition-all ${isEnabled ? 'border-primary/50 bg-primary/5' : ''}`}>
                     <div
-                      className="card-header"
+                      className="p-4 flex items-center justify-between cursor-pointer"
                       onClick={() => setExpandedProviders(prev => ({ ...prev, [provider]: !prev[provider] }))}
-                      onKeyDown={(event) => {
-                        if (event.key !== 'Enter' && event.key !== ' ') return
-                        event.preventDefault()
-                        setExpandedProviders(prev => ({ ...prev, [provider]: !prev[provider] }))
-                      }}
-                      role="button"
-                      tabIndex={0}
                     >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <div className="flex items-center gap-2 font-medium">
                         {isExpanded ? <FiChevronDown /> : <FiChevronRight />}
-                        <span className="provider-name">{provider.toUpperCase()}</span>
+                        {provider.toUpperCase()}
                       </div>
-                      <button
-                        type="button"
-                        className="toggle-btn"
-                        title={!isEnabled && !canEnable ? enableError : ''}
-                        disabled={!isEnabled && !canEnable}
+                      <div
+                        role="button"
                         onClick={(e) => {
                           e.stopPropagation()
                           if (!isEnabled && !canEnable) {
@@ -326,372 +275,222 @@ export function SecurityTab({
                         }}
                       >
                         {isEnabled ? (
-                          <BsToggleOn size={24} color="#10b981" />
+                          <BsToggleOn size={24} className="text-primary" />
                         ) : (
-                          <BsToggleOff size={24} color={!canEnable ? '#d1d5db' : '#9ca3af'} />
+                          <BsToggleOff size={24} className={!canEnable ? "text-muted-foreground/30" : "text-muted-foreground"} />
                         )}
-                      </button>
+                      </div>
                     </div>
                     
                     {isExpanded && (
-                      <div className="card-body">
+                      <div className="px-4 pb-4 space-y-4 border-t pt-4">
                         {!isEnabled && enableError && (
-                          <div className="muted" style={{ marginBottom: '10px', fontSize: '12px' }}>
+                          <div className="text-xs text-destructive">
                             {enableError}
                           </div>
                         )}
                         {provider === 'cloudflare' && (
-                          <div className="muted" style={{ fontSize: '12px' }}>
+                          <div className="text-xs text-muted-foreground">
                             无需配置，系统将从 Cloudflare 公共接口同步回源 IP
                           </div>
                         )}
 
                         {provider === 'aliyun' && (
                           <>
-                            <div className="form-field small">
-                              <label>AccessKeyId</label>
-                              <input
-                                className="input small"
-                                placeholder="必填"
-                                value={settings.apiKey || ''}
-                                onChange={e => {
-                                  const val = e.target.value
-                                  updateConfig(prev => {
-                                    const currentSettings = prev.security?.cdnProviderSettings || {}
-                                    return {
-                                      ...prev,
-                                      security: {
-                                        ...prev.security,
-                                        cdnProviderSettings: {
-                                          ...currentSettings,
-                                          [provider]: { ...currentSettings[provider], apiKey: val }
-                                        }
-                                      }
+                            <Input
+                              label="AccessKeyId"
+                              placeholder="必填"
+                              value={settings.apiKey || ''}
+                              onChange={e => {
+                                const val = e.target.value
+                                updateConfig(prev => ({
+                                  ...prev,
+                                  security: {
+                                    ...prev.security,
+                                    cdnProviderSettings: {
+                                      ...prev.security?.cdnProviderSettings,
+                                      [provider]: { ...settings, apiKey: val }
                                     }
-                                  })
-                                }}
-                              />
-                            </div>
-                            <div className="form-field small">
-                              <label>AccessKeySecret</label>
-                              <input
-                                className="input small"
-                                type="password"
-                                placeholder="仅写入不回显；留空表示保留历史值"
-                                value={settings.secretKey || ''}
-                                onChange={e => {
-                                  const val = e.target.value
-                                  updateConfig(prev => {
-                                    const currentSettings = prev.security?.cdnProviderSettings || {}
-                                    return {
-                                      ...prev,
-                                      security: {
-                                        ...prev.security,
-                                        cdnProviderSettings: {
-                                          ...currentSettings,
-                                          [provider]: { ...currentSettings[provider], secretKey: val }
-                                        }
-                                      }
+                                  }
+                                }))
+                              }}
+                            />
+                            <Input
+                              label="AccessKeySecret"
+                              type="password"
+                              placeholder="仅写入不回显；留空表示保留历史值"
+                              value={settings.secretKey || ''}
+                              onChange={e => {
+                                const val = e.target.value
+                                updateConfig(prev => ({
+                                  ...prev,
+                                  security: {
+                                    ...prev.security,
+                                    cdnProviderSettings: {
+                                      ...prev.security?.cdnProviderSettings,
+                                      [provider]: { ...settings, secretKey: val }
                                     }
-                                  })
-                                }}
-                              />
-                            </div>
-                            <div className="form-field small">
-                              <label>ESA SiteId</label>
-                              <input
-                                className="input small"
-                                placeholder="必填"
-                                value={settings.option || ''}
-                                onChange={e => {
-                                  const val = e.target.value
-                                  updateConfig(prev => {
-                                    const currentSettings = prev.security?.cdnProviderSettings || {}
-                                    return {
-                                      ...prev,
-                                      security: {
-                                        ...prev.security,
-                                        cdnProviderSettings: {
-                                          ...currentSettings,
-                                          [provider]: { ...currentSettings[provider], option: val }
-                                        }
-                                      }
+                                  }
+                                }))
+                              }}
+                            />
+                            <Input
+                              label="ESA SiteId"
+                              placeholder="必填"
+                              value={settings.option || ''}
+                              onChange={e => {
+                                const val = e.target.value
+                                updateConfig(prev => ({
+                                  ...prev,
+                                  security: {
+                                    ...prev.security,
+                                    cdnProviderSettings: {
+                                      ...prev.security?.cdnProviderSettings,
+                                      [provider]: { ...settings, option: val }
                                     }
-                                  })
-                                }}
-                              />
-                            </div>
-                            <div className="form-field small">
-                              <label>ESA Endpoint</label>
-                              <input
-                                className="input small"
-                                placeholder="可选，默认使用官方端点"
-                                value={settings.endpoint || ''}
-                                onChange={e => {
-                                  const val = e.target.value
-                                  updateConfig(prev => {
-                                    const currentSettings = prev.security?.cdnProviderSettings || {}
-                                    return {
-                                      ...prev,
-                                      security: {
-                                        ...prev.security,
-                                        cdnProviderSettings: {
-                                          ...currentSettings,
-                                          [provider]: { ...currentSettings[provider], endpoint: val }
-                                        }
-                                      }
+                                  }
+                                }))
+                              }}
+                            />
+                            <Input
+                              label="ESA Endpoint"
+                              placeholder="可选，默认使用官方端点"
+                              value={settings.endpoint || ''}
+                              onChange={e => {
+                                const val = e.target.value
+                                updateConfig(prev => ({
+                                  ...prev,
+                                  security: {
+                                    ...prev.security,
+                                    cdnProviderSettings: {
+                                      ...prev.security?.cdnProviderSettings,
+                                      [provider]: { ...settings, endpoint: val }
                                     }
-                                  })
-                                }}
-                              />
-                            </div>
+                                  }
+                                }))
+                              }}
+                            />
                           </>
                         )}
 
                         {provider === 'tencent' && (
                           <>
-                            <div className="form-field small">
-                              <label>SecretId</label>
-                              <input
-                                className="input small"
-                                placeholder="必填"
-                                value={settings.apiKey || ''}
-                                onChange={e => {
-                                  const val = e.target.value
-                                  updateConfig(prev => {
-                                    const currentSettings = prev.security?.cdnProviderSettings || {}
-                                    return {
-                                      ...prev,
-                                      security: {
-                                        ...prev.security,
-                                        cdnProviderSettings: {
-                                          ...currentSettings,
-                                          [provider]: { ...currentSettings[provider], apiKey: val }
-                                        }
-                                      }
+                            <Input
+                              label="SecretId"
+                              placeholder="必填"
+                              value={settings.apiKey || ''}
+                              onChange={e => {
+                                const val = e.target.value
+                                updateConfig(prev => ({
+                                  ...prev,
+                                  security: {
+                                    ...prev.security,
+                                    cdnProviderSettings: {
+                                      ...prev.security?.cdnProviderSettings,
+                                      [provider]: { ...settings, apiKey: val }
                                     }
-                                  })
-                                }}
-                              />
-                            </div>
-                            <div className="form-field small">
-                              <label>SecretKey</label>
-                              <input
-                                className="input small"
-                                type="password"
-                                placeholder="仅写入不回显；留空表示保留历史值"
-                                value={settings.secretKey || ''}
-                                onChange={e => {
-                                  const val = e.target.value
-                                  updateConfig(prev => {
-                                    const currentSettings = prev.security?.cdnProviderSettings || {}
-                                    return {
-                                      ...prev,
-                                      security: {
-                                        ...prev.security,
-                                        cdnProviderSettings: {
-                                          ...currentSettings,
-                                          [provider]: { ...currentSettings[provider], secretKey: val }
-                                        }
-                                      }
+                                  }
+                                }))
+                              }}
+                            />
+                            <Input
+                              label="SecretKey"
+                              type="password"
+                              placeholder="仅写入不回显；留空表示保留历史值"
+                              value={settings.secretKey || ''}
+                              onChange={e => {
+                                const val = e.target.value
+                                updateConfig(prev => ({
+                                  ...prev,
+                                  security: {
+                                    ...prev.security,
+                                    cdnProviderSettings: {
+                                      ...prev.security?.cdnProviderSettings,
+                                      [provider]: { ...settings, secretKey: val }
                                     }
-                                  })
-                                }}
-                              />
-                            </div>
-                            <div className="form-field small">
-                              <label>TEO ZoneId</label>
-                              <input
-                                className="input small"
-                                placeholder="必填"
-                                value={settings.zoneId || ''}
-                                onChange={e => {
-                                  const val = e.target.value
-                                  updateConfig(prev => {
-                                    const currentSettings = prev.security?.cdnProviderSettings || {}
-                                    return {
-                                      ...prev,
-                                      security: {
-                                        ...prev.security,
-                                        cdnProviderSettings: {
-                                          ...currentSettings,
-                                          [provider]: { ...currentSettings[provider], zoneId: val }
-                                        }
-                                      }
+                                  }
+                                }))
+                              }}
+                            />
+                            <Input
+                              label="TEO ZoneId"
+                              placeholder="必填"
+                              value={settings.zoneId || ''}
+                              onChange={e => {
+                                const val = e.target.value
+                                updateConfig(prev => ({
+                                  ...prev,
+                                  security: {
+                                    ...prev.security,
+                                    cdnProviderSettings: {
+                                      ...prev.security?.cdnProviderSettings,
+                                      [provider]: { ...settings, zoneId: val }
                                     }
-                                  })
-                                }}
-                              />
-                            </div>
-                            <div className="form-field small">
-                              <label>TEO Endpoint</label>
-                              <input
-                                className="input small"
-                                placeholder="可选，默认使用官方端点"
-                                value={settings.endpoint || ''}
-                                onChange={e => {
-                                  const val = e.target.value
-                                  updateConfig(prev => {
-                                    const currentSettings = prev.security?.cdnProviderSettings || {}
-                                    return {
-                                      ...prev,
-                                      security: {
-                                        ...prev.security,
-                                        cdnProviderSettings: {
-                                          ...currentSettings,
-                                          [provider]: { ...currentSettings[provider], endpoint: val }
-                                        }
-                                      }
-                                    }
-                                  })
-                                }}
-                              />
-                            </div>
+                                  }
+                                }))
+                              }}
+                            />
                           </>
                         )}
-                        <div className="form-field small">
-                          <label>刷新间隔（秒）</label>
-                          <input
-                            className="input small"
-                            type="number"
-                            min={60}
-                            max={86400}
-                            step={60}
-                            placeholder="默认 3600"
-                            value={settings.refreshIntervalSeconds ? String(settings.refreshIntervalSeconds) : ''}
-                            onChange={e => {
-                              const raw = e.target.value
-                              const parsed = raw === '' ? 0 : Number.parseInt(raw, 10)
-                              const next = Number.isFinite(parsed) ? parsed : 0
-                              updateConfig(prev => {
-                                const currentSettings = prev.security?.cdnProviderSettings || {}
-                                return {
-                                  ...prev,
-                                  security: {
-                                    ...prev.security,
-                                    cdnProviderSettings: {
-                                      ...currentSettings,
-                                      [provider]: { ...currentSettings[provider], refreshIntervalSeconds: next }
-                                    }
-                                  }
-                                }
-                              })
-                            }}
-                          />
-                        </div>
-                        <div className="form-field small">
-                          <label>最大陈旧（秒）</label>
-                          <input
-                            className="input small"
-                            type="number"
-                            min={60}
-                            max={604800}
-                            step={60}
-                            placeholder="默认：刷新间隔 × 3"
-                            value={settings.maxStalenessSeconds ? String(settings.maxStalenessSeconds) : ''}
-                            onChange={e => {
-                              const raw = e.target.value
-                              const parsed = raw === '' ? 0 : Number.parseInt(raw, 10)
-                              const next = Number.isFinite(parsed) ? parsed : 0
-                              updateConfig(prev => {
-                                const currentSettings = prev.security?.cdnProviderSettings || {}
-                                return {
-                                  ...prev,
-                                  security: {
-                                    ...prev.security,
-                                    cdnProviderSettings: {
-                                      ...currentSettings,
-                                      [provider]: { ...currentSettings[provider], maxStalenessSeconds: next }
-                                    }
-                                  }
-                                }
-                              })
-                            }}
-                          />
-                        </div>
-
-                        <div style={{ marginTop: '10px' }}>
-                          <button
-                            className="button secondary"
-                            onClick={() => setRefreshConfirmProvider(provider)}
-                            disabled={!isEnabled || refreshingProvider === provider}
-                          >
-                            {refreshingProvider === provider ? '拉取中...' : '立即拉取回源 IP'}
-                          </button>
-                        </div>
-
-                        <div className="muted" style={{ marginTop: '10px', fontSize: '12px' }}>
-                          最近尝试：{status?.last_attempt_at || '-'}，最近成功：{status?.last_success_at || '-'}，
-                          连续失败：{status?.consecutive_failures ?? 0}{status?.last_error ? `，错误：${status.last_error}` : ''}
-                        </div>
                       </div>
                     )}
-                  </div>
+                  </Card>
                 )
               })}
             </div>
-
-            <div style={{ marginTop: '20px', borderTop: '1px solid var(--border)', paddingTop: '20px' }}>
-              <div className="form-field">
-                <label style={{ fontWeight: 600, marginBottom: '8px', display: 'block' }}>自定义 IP 白名单（站点规则）</label>
-                <div className="muted" style={{ marginBottom: '10px', fontSize: '13px' }}>
-                  在此处配置的 IP/CIDR 将作为额外规则放行（不受 CDN 限制影响）。
-                  <br />
-                  留空或配置 0.0.0.0/0 (IPv4) / :: (IPv6) 表示不设置额外放行规则，完全跟随上方 CDN 回源配置。
-                </div>
-                <textarea 
-                  className="textarea"
-                  rows={5}
-                  placeholder="192.168.1.0/24"
-                  value={(config.security?.allowedCidrs || []).join('\n')}
-                  onChange={e => updateConfig(prev => ({
-                    ...prev,
-                    security: { 
-                      ...prev.security, 
-                      allowedCidrs: e.target.value.split('\n').map(l => l.trim()).filter(Boolean)
-                    }
-                  }))}
-                />
-              </div>
-            </div>
-          </div>
+          </CardContent>
         )}
-      </div>
+      </Card>
 
-      {refreshConfirmProvider && (
-        <div
-          className="confirm-overlay"
-          onClick={() => refreshingProvider == null && setRefreshConfirmProvider(null)}
-        >
-          <div
-            className="confirm-dialog"
-            role="dialog"
-            aria-modal="true"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="confirm-title">确认拉取</div>
-            <div className="confirm-message">
-              确定要立即拉取 {refreshConfirmProvider.toUpperCase()} 的回源 IP 吗？拉取成功后会立即影响数据面放行判断。
-            </div>
-            <div className="confirm-actions">
-              <button
-                className="button secondary"
-                onClick={() => setRefreshConfirmProvider(null)}
-                disabled={refreshingProvider != null}
-              >
-                取消
-              </button>
-              <button
-                className="button danger"
-                onClick={confirmRefresh}
-                disabled={refreshingProvider != null}
-              >
-                {refreshingProvider != null ? '拉取中...' : '确定拉取'}
-              </button>
-            </div>
+      <Modal
+        isOpen={showCertSelector}
+        onClose={() => setShowCertSelector(false)}
+        title="选择 SSL 证书"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            请为 {site?.hostname} 选择一个匹配的 SSL 证书以启用 HTTPS。
+          </p>
+          
+          <div className="max-h-[300px] overflow-y-auto space-y-2 border rounded-md p-2">
+            {filteredCerts.length === 0 ? (
+              <div className="p-4 text-center text-muted-foreground">
+                没有找到匹配的证书，请先在证书管理中上传。
+              </div>
+            ) : (
+              filteredCerts.map(cert => (
+                <div 
+                  key={cert.id} 
+                  className={`flex items-center justify-between p-3 rounded-md cursor-pointer transition-colors ${
+                    config.dataPlane?.certId === cert.id 
+                      ? 'bg-primary/10 border-primary' 
+                      : 'hover:bg-muted'
+                  }`}
+                  onClick={() => {
+                    updateConfig(prev => ({
+                      ...prev,
+                      dataPlane: { 
+                        ...prev.dataPlane, 
+                        enableHttps: true,
+                        certId: cert.id 
+                      }
+                    }))
+                    setShowCertSelector(false)
+                  }}
+                >
+                  <div>
+                    <div className="font-medium">{cert.name}</div>
+                    <div className="text-xs text-muted-foreground mt-1">
+                      {cert.domains.join(', ')}
+                    </div>
+                  </div>
+                  {config.dataPlane?.certId === cert.id && <FiCheck className="text-primary" />}
+                </div>
+              ))
+            )}
           </div>
         </div>
-      )}
+      </Modal>
     </div>
   )
 }

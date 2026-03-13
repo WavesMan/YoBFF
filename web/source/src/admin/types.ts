@@ -83,6 +83,10 @@ export type SecurityConfig = {
 
 export type Certificate = {
   domain?: string
+  certFile?: string
+  keyFile?: string
+  certPem?: string
+  keyPem?: string
 }
 
 export type CDNSyncConfig = {

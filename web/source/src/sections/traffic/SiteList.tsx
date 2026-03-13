@@ -1,7 +1,16 @@
 import { useCallback, useEffect, useState } from 'react'
-import { FiGlobe, FiServer, FiSettings, FiTrash2, FiX } from 'react-icons/fi'
+import { FiGlobe, FiServer, FiSettings, FiTrash2, FiPlus } from 'react-icons/fi'
 import { createSite, deleteSite, fetchSiteGroups } from '../../admin/api'
 import type { Site, SiteCreateRequest, SiteGroup } from '../../admin/types'
+import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card'
+import { Button } from '../../components/ui/Button'
+import { Select } from '../../components/ui/Select'
+import { Badge } from '../../components/ui/Badge'
+import { Table } from '../../components/ui/Table'
+import { Drawer } from '../../components/ui/Drawer'
+import { Input } from '../../components/ui/Input'
+import { Modal } from '../../components/ui/Modal'
+import { useToast } from '../../components/ui/Toast'
 
 type SiteListProps = {
   token: string
@@ -12,23 +21,22 @@ export function SiteList({ token, onSelectSite }: SiteListProps) {
   const [grouping, setGrouping] = useState<'hostname' | 'ip'>('hostname')
   const [groups, setGroups] = useState<SiteGroup[]>([])
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<Site | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const { success, error: toastError } = useToast()
 
   const loadSites = useCallback(async () => {
     setLoading(true)
-    setError('')
     try {
       const data = await fetchSiteGroups(token, grouping)
       setGroups(data.groups || [])
     } catch (err) {
-      setError(err instanceof Error ? err.message : '加载站点列表失败')
+      toastError(err instanceof Error ? err.message : '加载站点列表失败')
     } finally {
       setLoading(false)
     }
-  }, [token, grouping])
+  }, [token, grouping, toastError])
 
   useEffect(() => {
     loadSites()
@@ -39,363 +47,211 @@ export function SiteList({ token, onSelectSite }: SiteListProps) {
     setDeleting(true)
     try {
       await deleteSite(token, deleteTarget.id)
+      success('站点删除成功')
       setDeleteTarget(null)
       loadSites()
     } catch (err) {
-      setError(err instanceof Error ? err.message : '删除失败')
+      toastError(err instanceof Error ? err.message : '删除失败')
     } finally {
       setDeleting(false)
     }
   }
 
-  return (
-    <div className="card">
-      <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h3 className="card-title">站点列表</h3>
-        <div className="actions">
-          <select
-            className="select"
-            value={grouping}
-            onChange={(e) => setGrouping(e.target.value as 'hostname' | 'ip')}
-            style={{ width: 'auto' }}
+  const columns = [
+    { key: 'name', title: '站点名称', width: '25%' },
+    { key: 'hostname', title: '域名', width: '30%' },
+    { key: 'ip', title: 'IP', width: '25%' },
+    {
+      key: 'actions',
+      title: '操作',
+      width: '20%',
+      render: (site: Site) => (
+        <div className="flex justify-end gap-2">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => onSelectSite(site.id)}
+            title="配置"
+            icon={<FiSettings />}
           >
-            <option value="hostname">按域名分组</option>
-            <option value="ip">按 IP 分组</option>
-          </select>
-          <button className="button primary" onClick={() => setShowCreateModal(true)}>
-            <svg stroke="currentColor" fill="none" strokeWidth="2" viewBox="0 0 24 24" strokeLinecap="round" strokeLinejoin="round" height="1em" width="1em" xmlns="http://www.w3.org/2000/svg">
-              <line x1="12" y1="5" x2="12" y2="19"></line>
-              <line x1="5" y1="12" x2="19" y2="12"></line>
-            </svg>
-            添加站点
-          </button>
+            配置
+          </Button>
+          <Button
+            variant="danger"
+            size="sm"
+            onClick={() => setDeleteTarget(site)}
+            title="删除"
+            icon={<FiTrash2 />}
+          />
         </div>
-      </div>
-      
-      {error && <div className="error-message">{error}</div>}
-      
-      <div className="site-list-content">
-        {loading ? (
-          <div className="loading">加载中...</div>
-        ) : groups.length > 0 ? (
-          groups.map((group) => (
-            <div key={group.group_key} className="site-group">
-              <div className="group-header">
-                <span className="group-title">
-                  {grouping === 'hostname' ? <FiGlobe /> : <FiServer />}
-                  {group.group_key || '未分类'}
-                </span>
-                <span className="site-badge">{group.count}</span>
-              </div>
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>站点名称</th>
-                    <th>域名</th>
-                    <th>IP</th>
-                    <th style={{ textAlign: 'right' }}>操作</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {group.sites.map((site) => (
-                    <tr key={site.id}>
-                      <td>{site.name}</td>
-                      <td>{site.hostname}</td>
-                      <td>{site.ip}</td>
-                      <td style={{ textAlign: 'right' }}>
-                        <div className="action-buttons">
-                          <button
-                            className="button secondary"
-                            onClick={() => onSelectSite(site.id)}
-                            title="配置"
-                            style={{ padding: '6px 16px' }}
-                          >
-                            <FiSettings style={{ marginRight: 6 }} /> 配置
-                          </button>
-                          <button
-                            className="button small danger"
-                            onClick={() => setDeleteTarget({
-                              id: site.id,
-                              name: site.name,
-                              hostname: site.hostname,
-                              ip: site.ip,
-                            })}
-                            title="删除"
-                          >
-                            <FiTrash2 />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ))
-        ) : (
-          <div className="empty-state">暂无站点</div>
-        )}
-      </div>
+      ),
+    },
+  ]
 
-      {showCreateModal && (
-        <CreateSiteDrawer
-          token={token}
-          onClose={() => setShowCreateModal(false)}
-          onCreated={() => {
-            setShowCreateModal(false)
-            loadSites()
-          }}
-        />
-      )}
-
-      {deleteTarget && (
-        <div className="confirm-overlay" onClick={() => !deleting && setDeleteTarget(null)}>
-          <div className="confirm-dialog" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
-            <div className="confirm-title">确认删除</div>
-            <div className="confirm-message">
-              确定要删除站点「{deleteTarget.name || deleteTarget.hostname}」吗？此操作不可恢复。
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle>站点列表</CardTitle>
+          <div className="flex gap-4 items-center">
+            <div className="w-[200px]">
+              <Select
+                options={[
+                  { label: '按域名分组', value: 'hostname' },
+                  { label: '按 IP 分组', value: 'ip' },
+                ]}
+                value={grouping}
+                onChange={(e) => setGrouping(e.target.value as 'hostname' | 'ip')}
+              />
             </div>
-            <div className="confirm-actions">
-              <button className="button secondary" onClick={() => setDeleteTarget(null)} disabled={deleting}>
-                取消
-              </button>
-              <button className="button danger" onClick={handleDelete} disabled={deleting}>
-                {deleting ? '删除中...' : '确定删除'}
-              </button>
-            </div>
+            <Button onClick={() => setShowCreateModal(true)} icon={<FiPlus />}>
+              添加站点
+            </Button>
           </div>
+        </CardHeader>
+        
+        <CardContent>
+          {loading ? (
+            <div className="p-8 text-center text-muted-foreground">加载中...</div>
+          ) : groups.length > 0 ? (
+            <div className="space-y-6">
+              {groups.map((group) => (
+                <div key={group.group_key} className="border rounded-md overflow-hidden">
+                  <div className="bg-muted/50 px-4 py-3 flex items-center gap-3 border-b">
+                    <span className="flex items-center gap-2 font-medium">
+                      {grouping === 'hostname' ? <FiGlobe /> : <FiServer />}
+                      {group.group_key || '未分类'}
+                    </span>
+                    <Badge variant="primary">{group.count}</Badge>
+                  </div>
+                  <Table
+                    columns={columns}
+                    data={group.sites}
+                    rowKey="id"
+                    className="border-0"
+                  />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="p-8 text-center text-muted-foreground">暂无站点</div>
+          )}
+        </CardContent>
+      </Card>
+
+      <CreateSiteDrawer
+        token={token}
+        isOpen={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        onCreated={() => {
+          setShowCreateModal(false)
+          loadSites()
+        }}
+      />
+
+      <Modal
+        isOpen={!!deleteTarget}
+        onClose={() => !deleting && setDeleteTarget(null)}
+        title="确认删除"
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setDeleteTarget(null)} disabled={deleting}>
+              取消
+            </Button>
+            <Button variant="danger" onClick={handleDelete} disabled={deleting}>
+              {deleting ? '删除中...' : '确定删除'}
+            </Button>
+          </div>
+        }
+      >
+        <div className="py-2 text-muted-foreground">
+          确定要删除站点「{deleteTarget?.name || deleteTarget?.hostname}」吗？此操作不可恢复。
         </div>
-      )}
-      
-      <style>{`
-        .site-group {
-          margin-bottom: 20px;
-          border: 1px solid var(--border);
-          border-radius: 4px;
-          overflow: hidden;
-        }
-        .site-list-content {
-          padding: 12px 16px;
-        }
-        .group-header {
-          background: var(--bg-hover);
-          padding: 10px 15px;
-          display: flex;
-          align-items: center;
-          gap: 10px;
-          font-weight: 500;
-        }
-        .table th,
-        .table td {
-          padding: 10px 14px;
-          height: 42px;
-          vertical-align: middle;
-        }
-        .table thead th {
-          padding-top: 8px;
-          padding-bottom: 8px;
-        }
-        .group-title {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-        }
-        .site-badge {
-          background: var(--primary);
-          color: white;
-          padding: 2px 8px;
-          border-radius: 10px;
-          font-size: 12px;
-        }
-        .actions {
-          display: flex;
-          gap: 10px;
-        }
-        .action-buttons {
-          display: flex;
-          justify-content: flex-end;
-          align-items: center;
-          gap: 8px;
-        }
-        .error-message {
-          color: var(--error);
-          padding: 10px;
-          background: rgba(244, 67, 54, 0.1);
-          border-radius: 4px;
-          margin-bottom: 10px;
-        }
-        .icon-btn {
-          background: none;
-          border: none;
-          color: var(--text-sub);
-          cursor: pointer;
-          font-size: 20px;
-          padding: 5px;
-        }
-        .icon-btn:hover {
-          color: var(--text-main);
-        }
-        .site-edit-overlay {
-          position: fixed;
-          top: 0;
-          left: 0;
-          width: 100%;
-          height: 100%;
-          background: rgba(0, 0, 0, 0.5);
-          z-index: 999;
-          opacity: 0;
-          visibility: hidden;
-          transition: all 0.3s;
-        }
-        .site-edit-overlay.open {
-          opacity: 1;
-          visibility: visible;
-        }
-        .site-edit-drawer {
-          position: fixed;
-          top: 0;
-          right: -100%;
-          width: 420px;
-          max-width: 92vw;
-          height: 100vh;
-          background: var(--bg-surface);
-          z-index: 1000;
-          transition: right 0.3s ease;
-          display: flex;
-          flex-direction: column;
-          box-shadow: -5px 0 15px rgba(0,0,0,0.5);
-        }
-        .site-edit-drawer.open {
-          right: 0;
-        }
-        .site-edit-header {
-          padding: 15px 20px;
-          border-bottom: 1px solid var(--border);
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          background: var(--bg-surface);
-        }
-        .site-edit-title {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-        }
-        .site-edit-body {
-          padding: 20px;
-          overflow-y: auto;
-          background: var(--bg-surface);
-        }
-        .confirm-overlay {
-          position: fixed;
-          inset: 0;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          background: rgba(0, 0, 0, 0.55);
-          z-index: 1100;
-          padding: 24px;
-        }
-        .confirm-dialog {
-          width: min(420px, 92vw);
-          background: var(--bg-surface);
-          border: 1px solid var(--border);
-          border-radius: 8px;
-          box-shadow: 0 20px 50px rgba(0, 0, 0, 0.55);
-          padding: 20px;
-          display: flex;
-          flex-direction: column;
-          gap: 12px;
-        }
-        .confirm-title {
-          font-size: 16px;
-          font-weight: 600;
-        }
-        .confirm-message {
-          color: var(--text-secondary);
-          line-height: 1.6;
-        }
-        .confirm-actions {
-          display: flex;
-          justify-content: flex-end;
-          gap: 10px;
-        }
-      `}</style>
+      </Modal>
     </div>
   )
 }
 
-function CreateSiteDrawer({ token, onClose, onCreated }: { token: string, onClose: () => void, onCreated: () => void }) {
+function CreateSiteDrawer({ 
+  token, 
+  isOpen, 
+  onClose, 
+  onCreated 
+}: { 
+  token: string
+  isOpen: boolean
+  onClose: () => void
+  onCreated: () => void 
+}) {
   const [form, setForm] = useState<SiteCreateRequest>({
     name: '',
     hostname: '',
     ip: '',
   })
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
+  const { success, error: toastError } = useToast()
+
+  // Reset form when opening
+  useEffect(() => {
+    if (isOpen) {
+      setForm({ name: '', hostname: '', ip: '' })
+    }
+  }, [isOpen])
 
   const handleSubmit = async () => {
     if (!form.name || !form.hostname) {
-      setError('名称和域名为必填项')
+      toastError('名称和域名为必填项')
       return
     }
     setLoading(true)
-    setError('')
     try {
       await createSite(token, form)
+      success('站点创建成功')
       onCreated()
     } catch (err) {
-      setError(err instanceof Error ? err.message : '创建站点失败')
+      toastError(err instanceof Error ? err.message : '创建站点失败')
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <>
-      <div className="site-edit-overlay open" onClick={onClose} />
-      <div className="site-edit-drawer open">
-        <div className="site-edit-header">
-          <div className="site-edit-title">
-            <button className="icon-btn" onClick={onClose}><FiX /></button>
-            <h3>添加新站点</h3>
-          </div>
-          <button className="button primary" onClick={handleSubmit} disabled={loading}>
+    <Drawer
+      isOpen={isOpen}
+      onClose={onClose}
+      title="添加新站点"
+      footer={
+        <div className="flex justify-end gap-2 w-full">
+          <Button variant="secondary" onClick={onClose} disabled={loading}>
+            取消
+          </Button>
+          <Button onClick={handleSubmit} disabled={loading}>
             {loading ? '创建中...' : '创建'}
-          </button>
+          </Button>
         </div>
-        <div className="site-edit-body">
-          {error && <div className="error-message">{error}</div>}
-          <div className="form-field">
-            <label>站点名称</label>
-            <input
-              className="input"
-              value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-              placeholder="Example Site"
-            />
-          </div>
-          <div className="form-field">
-            <label>域名</label>
-            <input
-              className="input"
-              value={form.hostname}
-              onChange={(e) => setForm({ ...form, hostname: e.target.value })}
-              placeholder="example.com"
-            />
-          </div>
-          <div className="form-field">
-            <label>IP 地址 (可选)</label>
-            <input
-              className="input"
-              value={form.ip || ''}
-              onChange={(e) => setForm({ ...form, ip: e.target.value })}
-              placeholder="192.168.1.100"
-            />
-          </div>
-        </div>
+      }
+    >
+      <div className="space-y-4 py-4">
+        <Input
+          label="站点名称"
+          value={form.name}
+          onChange={(e) => setForm({ ...form, name: e.target.value })}
+          placeholder="Example Site"
+        />
+        <Input
+          label="域名"
+          value={form.hostname}
+          onChange={(e) => setForm({ ...form, hostname: e.target.value })}
+          placeholder="example.com"
+        />
+        <Input
+          label="IP 地址 (可选)"
+          value={form.ip || ''}
+          onChange={(e) => setForm({ ...form, ip: e.target.value })}
+          placeholder="192.168.1.100"
+        />
       </div>
-    </>
+    </Drawer>
   )
 }
 
