@@ -1,7 +1,9 @@
 package store
 
 import (
+	"database/sql"
 	"errors"
+	"log"
 	"sort"
 	"time"
 )
@@ -148,7 +150,12 @@ func (s *Store) listSiteTrafficLogs(siteID string, query SiteLogQuery, limit int
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func(rows *sql.Rows) {
+		err := rows.Close()
+		if err != nil {
+			log.Printf("failed to close rows: %v", err)
+		}
+	}(rows)
 	var items []SiteLogEntry
 	for rows.Next() {
 		var item SiteLogEntry
@@ -199,7 +206,12 @@ func (s *Store) listSiteSystemLogs(siteID string, query SiteLogQuery, limit int)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func(rows *sql.Rows) {
+		err := rows.Close()
+		if err != nil {
+
+		}
+	}(rows)
 	var items []SiteLogEntry
 	for rows.Next() {
 		var item SiteLogEntry

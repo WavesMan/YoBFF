@@ -14,8 +14,11 @@ func TestManager_UpdateProviderStatus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(f.Name())
-
+	defer func(name string) {
+		if closeErr := os.Remove(name); closeErr != nil {
+			t.Logf("清理临时文件失败: %v", closeErr)
+		}
+	}(f.Name())
 	content := `{
 		"dataPlane": {"httpListenAddr": ":8080"},
 		"controlPlane": {"adminListenAddr": ":9090"},
@@ -26,7 +29,10 @@ func TestManager_UpdateProviderStatus(t *testing.T) {
 	if _, err = f.WriteString(content); err != nil {
 		t.Fatal(err)
 	}
-	f.Close()
+	err = f.Close()
+	if err != nil {
+		return
+	}
 
 	// 2. 初始化 Manager
 	manager, err := NewManager(f.Name())

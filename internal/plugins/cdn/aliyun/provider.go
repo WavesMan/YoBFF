@@ -8,6 +8,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"sort"
@@ -127,7 +129,11 @@ func (p *Provider) FetchCIDRs(ctx context.Context) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func(Body io.ReadCloser) {
+		if err := Body.Close(); err != nil {
+			log.Printf("failed to close response body: %v", err)
+		}
+	}(resp.Body)
 	if resp.StatusCode != http.StatusOK {
 		var body struct {
 			Message string `json:"Message"`

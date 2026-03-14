@@ -1,58 +1,9 @@
-.drawer-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.5);
-  z-index: 999;
-  opacity: 0;
-  visibility: hidden;
-  transition: all 0.3s;
-}
-.drawer-overlay.open {
-  opacity: 1;
-  visibility: visible;
-}
-.drawer {
-  position: fixed;
-  top: 0;
-  right: -100%;
-  width: 85%;
-  height: 100vh;
-  background: #111; /* 使用深色背景代替透明度可能存在的变量 */
-  z-index: 1000;
-  transition: right 0.3s ease;
-  display: flex;
-  flex-direction: column;
-  box-shadow: -5px 0 15px rgba(0,0,0,0.5);
-  opacity: 1; /* 强制不透明 */
-}
-.drawer.open {
-  right: 0;
-}
 .form-row {
   display: flex;
   gap: 10px;
   align-items: flex-end;
 }
-.drawer-header {
-  padding: 15px 20px;
-  border-bottom: 1px solid var(--border);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: #111; /* 确保标题栏也不透明 */
-}
-.header-left {
-  display: flex;
-  align-items: center;
-  gap: 15px;
-}
-.header-left h3 {
-  margin: 0;
-  font-size: 1.1rem;
-}
+
 .icon-btn {
   background: none;
   border: none;
@@ -69,41 +20,81 @@
   background: var(--bg-hover);
   color: var(--text-primary);
 }
+
 .drawer-body {
   flex: 1;
   display: flex;
   overflow: hidden;
-  background: #111; /* 确保子元素也有背景 */
+  background: var(--bg-surface);
 }
+
 .config-sidebar {
   width: 200px;
   border-right: 1px solid var(--border);
-  background: #111; /* 确保侧边栏不透明 */
+  background: var(--bg-surface);
   padding: 20px 0;
+  flex-shrink: 0;
+  height: 100%;
 }
+
+.config-sidebar .tabs-list {
+  display: flex;
+  flex-direction: column;
+  border-bottom: none;
+  gap: 0;
+  margin-bottom: 0;
+  overflow-x: hidden;
+  height: 100%; /* Fill available height */
+}
+
+.site-config-tabs {
+  flex-direction: row !important;
+  width: 100%;
+}
+
 .config-menu-item {
-  padding: 12px 20px;
+  padding: 10px 12px 10px 24px;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   cursor: pointer;
   color: var(--text-secondary);
   transition: all 0.2s;
+  width: 100%; /* Ensure full width for button */
+  background: none;
+  border: none;
+  text-align: left;
+  font-size: 0.95rem;
 }
+
+.config-menu-item.tab-trigger {
+  border-radius: 6px;
+  justify-content: flex-start;
+  font-weight: normal;
+  margin: 0 8px;
+  width: auto;
+}
+
+.config-menu-item.tab-trigger::after {
+  display: none;
+}
+
 .config-menu-item:hover {
   background: var(--bg-hover);
   color: var(--text-primary);
 }
 .config-menu-item.active {
-  background: var(--bg-hover);
+  background: var(--primary-dim);
   color: var(--primary);
-  border-right: 3px solid var(--primary);
+  font-weight: 500;
+  border-right: none;
 }
 .config-content {
   flex: 1;
-  padding: 30px;
+  padding: 24px;
   overflow-y: auto;
-  background: #111; /* 确保内容区不透明 */
+  background: var(--bg-surface);
+  height: 100%;
 }
 .panel {
   max-width: 900px;
@@ -174,6 +165,15 @@
   border-radius: 6px;
   border: 1px solid var(--border);
 }
+
+.site-config-drawer-body {
+  padding: 0 !important;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden !important;
+}
+
 .version-info {
   display: flex;
   gap: 20px;
@@ -279,42 +279,6 @@
   border-color: var(--primary);
 }
 
-/* Modal Styles */
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.6);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1100;
-  backdrop-filter: blur(2px);
-}
-.modal-content {
-  background: var(--bg-card);
-  width: 500px;
-  max-width: 90vw;
-  border-radius: 12px;
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
-  display: flex;
-  flex-direction: column;
-  max-height: 85vh;
-  border: 1px solid var(--border);
-}
-.modal-header {
-  padding: 16px 20px;
-  border-bottom: 1px solid var(--border);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-.modal-header h4 {
-  margin: 0;
-  font-size: 1.1rem;
-}
 .icon-button {
   background: transparent;
   border: none;
@@ -330,10 +294,7 @@
   background: var(--bg-hover);
   color: var(--text-primary);
 }
-.modal-body {
-  padding: 20px;
-  overflow-y: auto;
-}
+
 .cert-list {
   display: flex;
   flex-direction: column;

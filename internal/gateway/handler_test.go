@@ -26,7 +26,11 @@ func TestHandler_SiteConfigOverride(t *testing.T) {
 	if err != nil {
 		t.Fatalf("初始化存储失败: %v", err)
 	}
-	defer s.Close()
+	defer func(s *store.Store) {
+		if closeErr := s.Close(); closeErr != nil {
+			t.Logf("关闭存储失败: %v", closeErr)
+		}
+	}(s)
 
 	site := store.Site{
 		Name:     "Secure Site",

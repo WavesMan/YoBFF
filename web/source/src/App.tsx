@@ -17,8 +17,11 @@ import { ObservabilitySection } from './sections/ObservabilitySection'
 import { OverviewSection } from './sections/OverviewSection'
 import { SystemSection } from './sections/SystemSection'
 import { TrafficSection } from './sections/TrafficSection'
-import { LoginLayout } from './layout/LoginLayout'
+import { UiDemoSection } from './sections/UiDemoSection'
+import LoginLayout from './layout/LoginLayout'
 import { MainLayout } from './layout/MainLayout'
+
+import { ToastProvider } from './components/ui/Toast'
 
 function App() {
   const [activeSection, setActiveSection] = useState('dashboard')
@@ -122,55 +125,58 @@ function App() {
     setStatusMessage('已退出登录')
   }
 
-  if (!token) {
-    return <LoginLayout onLoginSuccess={setToken} />
-  }
-
   return (
-    <MainLayout
-      token={token}
-      onLogout={handleLogout}
-      activeSection={activeSection}
-      setActiveSection={setActiveSection}
-      errorMessage={errorMessage}
-      statusMessage={statusMessage}
-    >
-      {activeSection === 'dashboard' && (
-        <OverviewSection
-          health={health}
-          logStats={logStats}
-          logLevel={logLevel}
-          loadingHealth={loading.health}
-          loadingLogStats={loading.logStats}
-        />
+    <ToastProvider>
+      {!token ? (
+        <LoginLayout onLoginSuccess={setToken} />
+      ) : (
+        <MainLayout
+          token={token}
+          onLogout={handleLogout}
+          activeSection={activeSection}
+          setActiveSection={setActiveSection}
+          errorMessage={errorMessage}
+          statusMessage={statusMessage}
+        >
+          {activeSection === 'dashboard' && (
+            <OverviewSection
+              health={health}
+              logStats={logStats}
+              logLevel={logLevel}
+              loadingHealth={loading.health}
+              loadingLogStats={loading.logStats}
+            />
+          )}
+          {activeSection === 'traffic' && (
+            <TrafficSection
+              token={token || ''}
+              operator={operatorName || 'unknown'}
+            />
+          )}
+          {activeSection === 'certificates' && (
+            <CertificatesSection token={token || ''} />
+          )}
+          {activeSection === 'observability' && (
+            <ObservabilitySection
+              health={health}
+              logStats={logStats}
+              loadingHealth={loading.health}
+              loadingLogStats={loading.logStats}
+            />
+          )}
+          {activeSection === 'system' && (
+            <SystemSection
+              logLevel={logLevel}
+              loadingLogLevel={loading.logLevel}
+              onLogLevelChange={handleLogLevelChange}
+              loadingReload={loading.reload}
+              onReload={handleReload}
+            />
+          )}
+          {activeSection === 'uidemo' && <UiDemoSection />}
+        </MainLayout>
       )}
-      {activeSection === 'traffic' && (
-        <TrafficSection
-          token={token || ''}
-          operator={operatorName || 'unknown'}
-        />
-      )}
-      {activeSection === 'certificates' && (
-        <CertificatesSection token={token || ''} />
-      )}
-      {activeSection === 'observability' && (
-        <ObservabilitySection
-          health={health}
-          logStats={logStats}
-          loadingHealth={loading.health}
-          loadingLogStats={loading.logStats}
-        />
-      )}
-      {activeSection === 'system' && (
-        <SystemSection
-          logLevel={logLevel}
-          loadingLogLevel={loading.logLevel}
-          onLogLevelChange={handleLogLevelChange}
-          loadingReload={loading.reload}
-          onReload={handleReload}
-        />
-      )}
-    </MainLayout>
+    </ToastProvider>
   )
 }
 

@@ -5,7 +5,9 @@ import (
 	"errors"
 	"io"
 	"io/fs"
+	"log"
 	"net/http"
+	"net/url"
 	"strings"
 )
 
@@ -73,6 +75,15 @@ func NewUIHandler(fsys fs.FS) (http.Handler, error) {
 			fileServer.ServeHTTP(w, r)
 			return
 		}
+		if strings.HasPrefix(path, "assets/") {
+			altPath := strings.TrimPrefix(path, "assets/")
+			if fileExists(fsys, altPath) {
+				r2 := r.Clone(r.Context())
+				r2.URL = &url.URL{Path: "/" + altPath}
+				fileServer.ServeHTTP(w, r2)
+				return
+			}
+		}
 		serveIndex(w, r, fsys)
 	}), nil
 }
@@ -118,7 +129,11 @@ func serveIndex(w http.ResponseWriter, r *http.Request, fsys fs.FS) {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
-	defer file.Close()
+	defer func(file fs.File) {
+		if closeErr := file.Close(); closeErr != nil {
+			log.Printf("failed to close file: %v", closeErr)
+		}
+	}(file)
 	info, err := file.Stat()
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)

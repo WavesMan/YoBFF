@@ -31,6 +31,18 @@ import type {
 
 const API_BASE = '/admin/api/v1'
 
+export class RequestError extends Error {
+  error_code?: string
+  request_id?: string
+  
+  constructor(message: string, error_code?: string, request_id?: string) {
+    super(message)
+    this.name = 'RequestError'
+    this.error_code = error_code
+    this.request_id = request_id
+  }
+}
+
 async function apiRequest<T>(
   path: string,
   options: RequestInit = {},
@@ -56,10 +68,11 @@ async function apiRequest<T>(
       .map(issue => `${issue.path}: ${issue.message}`)
       .join('; ')
     const detailText = issues ? `，详情：${issues}` : ''
-    const requestIDText = error.request_id ? ` [request_id=${error.request_id}]` : ''
-    const errorCodeText = error.error_code ? ` [error_code=${error.error_code}]` : ''
-    const message = (error.message || `请求失败(${response.status})`) + detailText + errorCodeText + requestIDText
-    throw new Error(message)
+    // 保留原始信息在 message 中，以便兼容旧的显示方式（如果需要）
+    // 但更推荐前端通过 error_code 和 request_id 单独处理展示
+    const message = (error.message || `请求失败(${response.status})`) + detailText
+    
+    throw new RequestError(message, error.error_code, error.request_id)
   }
   return data as T
 }

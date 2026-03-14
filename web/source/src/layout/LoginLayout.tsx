@@ -1,172 +1,228 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
-  fetchCaptcha,
-  fetchLoginCaptchaRequirement,
-  loginAdmin,
+    fetchCaptcha,
+    fetchLoginCaptchaRequirement,
+    loginAdmin,
 } from '../admin/api'
 import type {
-  CaptchaResponse,
-  LoginPayload,
+    CaptchaResponse,
+    LoginPayload,
 } from '../admin/types'
+import { useToast } from '../components/ui/Toast'
+import { 
+    RiUserLine, 
+    RiLockPasswordLine, 
+    RiShieldKeyholeLine,
+    RiEyeLine,
+    RiEyeOffLine
+} from 'react-icons/ri'
+import './LoginLayout.css'
 
 type LoginLayoutProps = {
-  onLoginSuccess: (token: string) => void
+    onLoginSuccess: (token: string) => void
 }
 
 export function LoginLayout({ onLoginSuccess }: LoginLayoutProps) {
-  const [captcha, setCaptcha] = useState<CaptchaResponse | null>(null)
-  const [captchaRequired, setCaptchaRequired] = useState(false)
-  const [loginForm, setLoginForm] = useState<LoginPayload>({
-    username: '',
-    password: '',
-    captcha_id: '',
-    captcha_code: '',
-  })
-  const [statusMessage, setStatusMessage] = useState('')
-  const [errorMessage, setErrorMessage] = useState('')
+    const { success, error } = useToast()
+    const logoSrc = import.meta.env.DEV ? '/Logo.png' : '/assets/Logo.png'
+    const [captcha, setCaptcha] = useState<CaptchaResponse | null>(null)
+    const [captchaRequired, setCaptchaRequired] = useState(false)
+    const [isLoading, setIsLoading] = useState(false)
+    const [showPassword, setShowPassword] = useState(false)
+    const [loginForm, setLoginForm] = useState<LoginPayload>({
+        username: 'admin',
+        password: '',
+        captcha_id: '',
+        captcha_code: '',
+    })
 
-  const checkCaptcha = useCallback(async () => {
-     try {
-        const data = await fetchLoginCaptchaRequirement()
-        if (!data.required) {
-            setCaptchaRequired(false)
-            setCaptcha(null)
+    // 获取新的验证码
+    const handleFetchCaptcha = useCallback(async () => {
+        try {
+            const data = await fetchCaptcha('default')
+            setCaptcha(data)
+            setLoginForm((prev) => ({ ...prev, captcha_id: data.captcha_id, captcha_code: '' }))
+        } catch (err) {
+            const errorObj = err instanceof Error ? err : new Error('验证码获取失败')
+            error(errorObj)
+            console.error('[Captcha Error]', errorObj.message)
+        }
+    }, [error])
+
+    // 检查是否需要验证码
+    const checkCaptcha = useCallback(async () => {
+        try {
+            const data = await fetchLoginCaptchaRequirement()
+            if (!data.required) {
+                setCaptchaRequired(false)
+                setCaptcha(null)
+                return
+            }
+            setCaptchaRequired(true)
+            await handleFetchCaptcha()
+        } catch (e) {
+            console.error('[Check Captcha Error]', e)
+        }
+    }, [handleFetchCaptcha])
+
+    useEffect(() => {
+        checkCaptcha()
+    }, [checkCaptcha])
+
+    // 处理登录提交
+    const handleLogin = async (e?: React.FormEvent) => {
+        e?.preventDefault()
+        
+        if (!loginForm.username || !loginForm.password) {
+            error('请输入用户名和密码')
             return
         }
-        setCaptchaRequired(true)
-        const cap = await fetchCaptcha('default')
-        setCaptcha(cap)
-        setLoginForm(prev => ({...prev, captcha_id: cap.captcha_id}))
-     } catch (e) {
-         console.error(e)
-     }
-  }, [])
 
-  useEffect(() => {
-    checkCaptcha()
-  }, [checkCaptcha])
+        if (captchaRequired && !loginForm.captcha_code) {
+            error('请输入验证码')
+            return
+        }
 
-  const handleFetchCaptcha = async () => {
-    setErrorMessage('')
-    try {
-      const data = await fetchCaptcha('default')
-      setCaptcha(data)
-      setLoginForm((prev) => ({ ...prev, captcha_id: data.captcha_id }))
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : '验证码获取失败')
+        setIsLoading(true)
+        try {
+            const data = await loginAdmin(loginForm)
+            const token = data.token
+            if (!token) {
+                throw new Error('登录未返回 token')
+            }
+            localStorage.setItem('yobff_token', token)
+            success('登录成功')
+            
+            // 延迟跳转以展示成功状态
+            setTimeout(() => {
+                onLoginSuccess(token)
+            }, 500)
+        } catch (err) {
+            const errorObj = err instanceof Error ? err : new Error('登录失败')
+            error(errorObj)
+            console.error('[Login Error]', errorObj.message)
+            await checkCaptcha()
+        } finally {
+            setIsLoading(false)
+        }
     }
-  }
 
-  const handleLogin = async () => {
-    setErrorMessage('')
-    setStatusMessage('')
-    try {
-      const data = await loginAdmin(loginForm)
-      if (!data.token) {
-        throw new Error('登录未返回 token')
-      }
-      localStorage.setItem('yobff_token', data.token)
-      setStatusMessage('登录成功')
-      onLoginSuccess(data.token)
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : '登录失败')
-      await checkCaptcha()
-    }
-  }
+    const captchaImageSrc = captcha?.image_base64
+        ? captcha.image_base64.startsWith('data:image/')
+            ? captcha.image_base64
+            : `data:image/png;base64,${captcha.image_base64}`
+        : ''
 
-  const captchaImageSrc = captcha?.image_base64
-    ? captcha.image_base64.startsWith('data:image/')
-      ? captcha.image_base64
-      : `data:image/png;base64,${captcha.image_base64}`
-    : ''
-
-  return (
-    <div className="login-overlay">
-      <div className="login-card card">
-        <div className="login-header">
-          <div className="brand login-brand">
-            <span className="brand-icon" />
-            <span className="brand-text">YoBFF</span>
-          </div>
-          <div className="login-title">管理端登录</div>
-          <div className="muted">登录后进入管理面板进行配置与观测</div>
-        </div>
-        {errorMessage && (
-          <div className="error-banner" role="alert">
-            {errorMessage}
-          </div>
-        )}
-        {statusMessage && (
-          <div className="success-banner" role="status" aria-live="polite">
-            {statusMessage}
-          </div>
-        )}
-        <div className="stack">
-          <div className="form-row">
-            <div className="form-field">
-              <label className="label">用户名</label>
-              <input
-                className="input"
-                value={loginForm.username}
-                onChange={(event) =>
-                  setLoginForm({
-                    ...loginForm,
-                    username: event.target.value,
-                  })
-                }
-                placeholder="admin"
-              />
-            </div>
-            <div className="form-field">
-              <label className="label">密码</label>
-              <input
-                className="input"
-                type="password"
-                value={loginForm.password}
-                onChange={(event) =>
-                  setLoginForm({
-                    ...loginForm,
-                    password: event.target.value,
-                  })
-                }
-                placeholder="password"
-              />
-            </div>
-          </div>
-          {captchaRequired && (
-            <div className="form-row">
-              <div className="form-field">
-                <label className="label">验证码</label>
-                <input
-                  className="input"
-                  value={loginForm.captcha_code || ''}
-                  onChange={(event) =>
-                    setLoginForm({
-                      ...loginForm,
-                      captcha_code: event.target.value,
-                    })
-                  }
-                  placeholder="1234"
-                />
-              </div>
-              <div className="form-field">
-                <label className="label">验证码图片</label>
-                <div className="inline">
-                  <button className="button secondary" onClick={handleFetchCaptcha}>
-                    获取验证码
-                  </button>
-                  {captchaImageSrc && (
-                    <img className="captcha-image" src={captchaImageSrc} alt="验证码" />
-                  )}
+    return (
+        <div className="login-page-body">
+            <div className="login-card-modern">
+                <div className="brand-section">
+                    <div className="brand-logo">
+                        <img src={logoSrc} alt="YoBFF Logo" />
+                    </div>
+                    <h1 className="brand-title">YoBFF</h1>
+                    <p className="brand-subtitle">管理端登录</p>
                 </div>
-              </div>
+
+                <form className="login-form" onSubmit={handleLogin}>
+                    <div className="form-group">
+                        <label className="form-label">用户名</label>
+                        <div className="input-wrapper">
+                            <RiUserLine className="input-icon" />
+                            <input 
+                                type="text" 
+                                className="form-input" 
+                                placeholder="admin" 
+                                value={loginForm.username}
+                                onChange={(e) => setLoginForm({ ...loginForm, username: e.target.value })}
+                                required
+                            />
+                        </div>
+                    </div>
+
+                    <div className="form-group">
+                        <label className="form-label">密码</label>
+                        <div className="input-wrapper">
+                            <RiLockPasswordLine className="input-icon" />
+                            <input 
+                                type={showPassword ? "text" : "password"}
+                                className="form-input" 
+                                style={{ paddingRight: '2.5rem' }}
+                                placeholder="password" 
+                                value={loginForm.password}
+                                onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })}
+                                required
+                            />
+                            <button
+                                type="button"
+                                className="password-toggle"
+                                onClick={() => setShowPassword(!showPassword)}
+                                tabIndex={-1}
+                                title={showPassword ? "隐藏密码" : "显示密码"}
+                            >
+                                {showPassword ? <RiEyeOffLine /> : <RiEyeLine />}
+                            </button>
+                        </div>
+                    </div>
+
+                    {captchaRequired && (
+                        <div className="form-group">
+                            <label className="form-label">验证码</label>
+                            <div className="captcha-group">
+                                <div className="input-wrapper">
+                                    <RiShieldKeyholeLine className="input-icon" />
+                                    <input 
+                                        type="text" 
+                                        className="form-input" 
+                                        placeholder="1234"
+                                        value={loginForm.captcha_code}
+                                        onChange={(e) => setLoginForm({ ...loginForm, captcha_code: e.target.value })}
+                                        required
+                                    />
+                                </div>
+                                <div 
+                                    className="captcha-display" 
+                                    title="点击刷新"
+                                    onClick={handleFetchCaptcha}
+                                >
+                                    {captchaImageSrc ? (
+                                        <img 
+                                            src={captchaImageSrc} 
+                                            alt="验证码" 
+                                            className="captcha-image"
+                                        />
+                                    ) : (
+                                        <span style={{ color: 'var(--text-tertiary)', fontSize: '0.8rem' }}>
+                                            加载中...
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    <button 
+                        type="submit" 
+                        className={`btn-submit ${isLoading ? 'loading' : ''}`}
+                        disabled={isLoading}
+                    >
+                        {isLoading ? (
+                            <div className="spinner"></div>
+                        ) : (
+                            <span>登录</span>
+                        )}
+                    </button>
+                </form>
+
             </div>
-          )}
-          <button className="button primary" onClick={handleLogin}>
-            登录并进入面板
-          </button>
+            <div className="login-footer">
+                <p>&copy; 2026 YoBFF - BFF Load Balancing Gateway. Licensed under the Apache License, Version 2.0.</p>
+                <p>
+                    Available at: <a href="https://github.com/WavesMan/YoBFF" target="_blank" rel="noreferrer">https://github.com/WavesMan/YoBFF</a>
+                </p>
+            </div>
         </div>
-      </div>
-    </div>
-  )
+    )
 }
+
+export default LoginLayout
