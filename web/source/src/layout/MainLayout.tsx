@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { FiActivity, FiEye, FiLock, FiShuffle, FiSliders, FiLayers } from 'react-icons/fi'
+import { FiActivity, FiEye, FiLock, FiShuffle, FiSliders } from 'react-icons/fi'
 import Sidebar, { type SidebarItem } from '../components/Sidebar'
 import { TopBar } from '../components/TopBar'
 
