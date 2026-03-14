@@ -1,6 +1,7 @@
 package store
 
 import (
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -221,7 +222,12 @@ func (s *Store) ListSiteCDNOriginStatus(siteID string) ([]SiteCDNOriginStatus, e
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func(rows *sql.Rows) {
+		err := rows.Close()
+		if err != nil {
+
+		}
+	}(rows)
 
 	var items []SiteCDNOriginStatus
 	for rows.Next() {

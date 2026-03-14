@@ -15,15 +15,25 @@ import (
 // TestServer_CDNConfig 验证 CDN 配置接口的读写行为。
 func TestServer_CDNConfig(t *testing.T) {
 	// 1. Setup Env
-	os.Setenv("ADMIN_API_TOKEN", "test-token")
-	defer os.Unsetenv("ADMIN_API_TOKEN")
+	if err := os.Setenv("ADMIN_API_TOKEN", "test-token"); err != nil {
+		t.Fatalf("设置环境变量失败: %v", err)
+	}
+	t.Cleanup(func() {
+		if unsetErr := os.Unsetenv("ADMIN_API_TOKEN"); unsetErr != nil {
+			t.Fatalf("清理环境变量失败: %v", unsetErr)
+		}
+	})
 
 	// 2. Setup Manager with temp config
 	f, err := os.CreateTemp("", "admin_test_*.json")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(f.Name())
+	t.Cleanup(func() {
+		if removeErr := os.Remove(f.Name()); removeErr != nil {
+			t.Fatalf("清理临时文件失败: %v", removeErr)
+		}
+	})
 
 	initialConfig := `{
 		"dataPlane": {"httpListenAddr": ":8080"},
@@ -40,7 +50,9 @@ func TestServer_CDNConfig(t *testing.T) {
 	if _, err = f.WriteString(initialConfig); err != nil {
 		t.Fatal(err)
 	}
-	f.Close()
+	if err = f.Close(); err != nil {
+		t.Fatal(err)
+	}
 
 	manager, err := config.NewManager(f.Name())
 	if err != nil {

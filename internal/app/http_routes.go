@@ -128,7 +128,12 @@ func serveIndex(w http.ResponseWriter, r *http.Request, fsys fs.FS) {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
-	defer file.Close()
+	defer func(file fs.File) {
+		err := file.Close()
+		if err != nil {
+
+		}
+	}(file)
 	info, err := file.Stat()
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)

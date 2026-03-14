@@ -239,7 +239,12 @@ func (s *Store) ListSites(filter SiteFilter) ([]Site, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func(rows *sql.Rows) {
+		err := rows.Close()
+		if err != nil {
+
+		}
+	}(rows)
 	var items []Site
 	for rows.Next() {
 		var site Site
@@ -396,7 +401,12 @@ func (s *Store) ListSiteVersions(siteID string, limit int) ([]ConfigVersion, err
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func(rows *sql.Rows) {
+		err := rows.Close()
+		if err != nil {
+
+		}
+	}(rows)
 	var versions []ConfigVersion
 	for rows.Next() {
 		var item ConfigVersion

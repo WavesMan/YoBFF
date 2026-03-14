@@ -71,7 +71,12 @@ func TestShutdownServer_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("监听失败: %v", err)
 	}
-	defer listener.Close()
+	defer func(listener net.Listener) {
+		err := listener.Close()
+		if err != nil {
+
+		}
+	}(listener)
 
 	srv := &http.Server{
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -104,7 +109,12 @@ func TestShutdownServer_CanceledContext(t *testing.T) {
 	if err != nil {
 		t.Fatalf("监听失败: %v", err)
 	}
-	defer listener.Close()
+	defer func(listener net.Listener) {
+		err := listener.Close()
+		if err != nil {
+
+		}
+	}(listener)
 
 	srv := &http.Server{
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -390,7 +400,12 @@ func TestShutdownServer_ErrorBranch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("监听失败: %v", err)
 	}
-	defer listener.Close()
+	defer func(listener net.Listener) {
+		err := listener.Close()
+		if err != nil {
+
+		}
+	}(listener)
 	srv := &http.Server{
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
@@ -428,7 +443,12 @@ func TestShutdownServer_DeadlineExceeded(t *testing.T) {
 	if err != nil {
 		t.Fatalf("监听失败: %v", err)
 	}
-	defer listener.Close()
+	defer func(listener net.Listener) {
+		err := listener.Close()
+		if err != nil {
+
+		}
+	}(listener)
 
 	serveDone := make(chan error, 1)
 	go func() {

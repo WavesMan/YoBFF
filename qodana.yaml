@@ -1,0 +1,59 @@
+#-------------------------------------------------------------------------------#
+#               Qodana analysis is configured by qodana.yaml file               #
+#             https://www.jetbrains.com/help/qodana/qodana-yaml.html            #
+#-------------------------------------------------------------------------------#
+version: "1.0"
+#Specify inspection profile for code analysis
+profile:
+  name: qodana.starter
+#Enable inspections
+#include:
+#  - name: <SomeEnabledInspectionId>
+#Disable inspections
+#exclude:
+#  - name: <SomeDisabledInspectionId>
+#    paths:
+#      - <path/where/not/run/inspection>
+#Execute shell command before Qodana execution (Applied in CI/CD pipeline)
+#bootstrap: sh ./prepare-qodana.sh
+#Install IDE plugins before Qodana execution (Applied in CI/CD pipeline)
+#plugins:
+#  - id: <plugin.id> #(plugin id can be found at https://plugins.jetbrains.com)
+#Specify Qodana linter for analysis (Applied in CI/CD pipeline)
+linter: jetbrains/qodana-go:2025.1
+exclude:
+  - name: All
+    paths:
+      - internal
+      - internal/admin
+      - internal/admin/certificates.go
+      - internal/admin/server_cdn_test.go
+      - internal/app
+      - internal/app/http_routes.go
+      - internal/config
+      - internal/config/manager_cdn_test.go
+      - internal/gateway
+      - internal/gateway/handler_test.go
+      - internal/logging
+      - internal/logging/runtime_test.go
+      - internal/plugins
+      - internal/plugins/cdn
+      - internal/plugins/cdn/aliyun
+      - internal/plugins/cdn/aliyun/provider.go
+      - internal/plugins/cdn/cloudflare
+      - internal/plugins/cdn/cloudflare/provider.go
+      - internal/plugins/cdn/tencent
+      - internal/plugins/cdn/tencent/provider.go
+      - internal/store
+      - internal/store/site_cdn_origin_test.go
+      - internal/store/site_cdn_origin.go
+      - internal/store/site_logs.go
+      - internal/store/site_test.go
+      - internal/store/site.go
+      - internal/store/sqlite_test.go
+      - internal/store/sqlite.go
+      - internal/syncer
+      - internal/syncer/service_test.go
+      - internal/syncer/service.go
+      - internal/syncer/site_origin_service_test.go
+      - main_test.go
