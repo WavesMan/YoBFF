@@ -11,10 +11,22 @@
   color: var(--text-secondary);
 }
 
+.input-wrapper.horizontal {
+  flex-direction: row;
+  align-items: center;
+}
+
+.input-wrapper.horizontal .input-label {
+  width: 180px;
+  flex-shrink: 0;
+  margin-bottom: 0;
+}
+
 .input-container {
   position: relative;
   display: flex;
   align-items: center;
+  flex: 1;
 }
 
 .input-field {

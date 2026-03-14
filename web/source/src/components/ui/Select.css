@@ -5,10 +5,22 @@
   width: 100%;
 }
 
+.select-wrapper.horizontal {
+  flex-direction: row;
+  align-items: center;
+}
+
+.select-wrapper.horizontal .input-label {
+  width: 180px;
+  flex-shrink: 0;
+  margin-bottom: 0;
+}
+
 .select-container {
   position: relative;
   display: flex;
   align-items: center;
+  flex: 1;
 }
 
 .select-field {

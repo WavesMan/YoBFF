@@ -18,6 +18,8 @@ type SidebarProps = {
 };
 
 export function Sidebar({ items, activeKey, onChange, collapsed, onToggle }: SidebarProps) {
+  const logoSrc = import.meta.env.DEV ? '/Logo.png' : '/assets/Logo.png'
+
   // Group items
   const groupedItems = items.reduce((acc, item) => {
     const group = item.group || 'General';
@@ -29,14 +31,13 @@ export function Sidebar({ items, activeKey, onChange, collapsed, onToggle }: Sid
   return (
     <aside className={`sidebar ${collapsed ? 'collapsed' : ''}`}>
       <div className="brand">
-        <img src="/Logo.png" alt="YoBFF" className="brand-logo" />
+        <img src={logoSrc} alt="YoBFF" className="brand-logo" />
         <span className="brand-text">YoBFF Web</span>
       </div>
 
       <nav className="nav-group">
         {Object.entries(groupedItems).map(([group, groupItems]) => (
           <div key={group} className="nav-group-section">
-             {/* Only show title if it's not the default General group or if we want to separate sections */}
             {!collapsed && group !== 'General' && (
               <div className="nav-group-title">{group}</div>
             )}
@@ -76,3 +77,5 @@ export function Sidebar({ items, activeKey, onChange, collapsed, onToggle }: Sid
     </aside>
   );
 }
+
+export default Sidebar;

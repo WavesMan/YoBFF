@@ -1,6 +1,5 @@
 import { FiCheck, FiTrash2 } from 'react-icons/fi'
 import type { Config, Site, SSLCertificate, Certificate } from '../../../../admin/types'
-import { Card, CardContent, CardHeader, CardTitle } from '../../../../components/ui/Card'
 import { Button } from '../../../../components/ui/Button'
 import { Table, type Column } from '../../../../components/ui/Table'
 import { Badge } from '../../../../components/ui/Badge'
@@ -119,50 +118,52 @@ export function HttpsCertTab({
   ]
 
   return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>HTTPS 证书</CardTitle>
-          <div className="text-sm text-muted-foreground mt-2">
-            为站点 {site?.hostname || '-'} 选择已上传的 SSL 证书，并可配置自动申请证书的域名列表。
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="space-y-4">
-            <h3 className="text-lg font-medium">已上传证书（匹配站点域名）</h3>
-            {filteredCerts.length === 0 ? (
-              <div className="p-8 text-center text-muted-foreground border rounded-lg border-dashed">
-                没有找到匹配的证书，请先在证书管理中上传。
-              </div>
-            ) : (
+    <div className="space-y-8">
+      <div>
+        <h3 className="text-lg font-medium mb-2">HTTPS 证书</h3>
+        <p className="text-sm text-muted-foreground mb-6">
+          为站点 {site?.hostname || '-'} 选择已上传的 SSL 证书，并可配置自动申请证书的域名列表。
+        </p>
+        
+        <div className="space-y-4">
+          <h4 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">已上传证书（匹配站点域名）</h4>
+          {filteredCerts.length === 0 ? (
+            <div className="p-8 text-center text-muted-foreground border rounded-lg border-dashed">
+              没有找到匹配的证书，请先在证书管理中上传。
+            </div>
+          ) : (
+            <div className="border rounded-md overflow-hidden">
               <Table
                 columns={uploadedCertColumns}
                 data={filteredCerts}
                 rowKey="id"
               />
-            )}
-            <div className="text-sm text-muted-foreground bg-muted/30 p-3 rounded-md">
-              当前状态：
-              <span className={config.dataPlane?.enableHttps ? 'text-green-500 font-medium ml-2' : 'text-yellow-500 font-medium ml-2'}>
-                {config.dataPlane?.enableHttps ? 'HTTPS 已启用' : 'HTTPS 未启用'}
-              </span>
-              {selectedCert 
-                ? <span className="ml-2">，使用证书「{selectedCert.name}」</span>
-                : config.dataPlane?.certId ? <span className="ml-2 text-red-400">，证书未匹配到站点域名</span> : ''}
             </div>
+          )}
+          
+          <div className="flex items-center text-sm p-3 rounded-md bg-muted/30">
+            <span className="text-muted-foreground mr-2">当前状态：</span>
+            <span className={config.dataPlane?.enableHttps ? 'text-green-500 font-medium' : 'text-yellow-500 font-medium'}>
+              {config.dataPlane?.enableHttps ? 'HTTPS 已启用' : 'HTTPS 未启用'}
+            </span>
+            {selectedCert 
+              ? <span className="ml-2 text-muted-foreground">，使用证书「{selectedCert.name}」</span>
+              : config.dataPlane?.certId ? <span className="ml-2 text-red-400">，证书未匹配到站点域名</span> : ''}
           </div>
+        </div>
+      </div>
 
-          <div className="space-y-4 pt-4 border-t">
-            <h3 className="text-lg font-medium">自动申请证书域名</h3>
-            <Table
-              columns={autoCertColumns}
-              data={config.certificates || []}
-              rowKey={(row: Certificate) => row.domain || ''}
-              emptyText="暂无证书配置"
-            />
-          </div>
-        </CardContent>
-      </Card>
+      <div className="space-y-4 pt-6 border-t">
+        <h4 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">自动申请证书域名</h4>
+        <div className="border rounded-md overflow-hidden">
+          <Table
+            columns={autoCertColumns}
+            data={config.certificates || []}
+            rowKey={(row: Certificate) => row.domain || ''}
+            emptyText="暂无证书配置"
+          />
+        </div>
+      </div>
     </div>
   )
 }

@@ -1,13 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { FiChevronDown, FiChevronRight, FiCheck, FiRefreshCw } from 'react-icons/fi'
-import { BsToggleOn, BsToggleOff } from 'react-icons/bs'
 import { fetchSiteCDNOriginStatus } from '../../../../admin/api'
 import type { CDNProviderSetting, Config, Site, SSLCertificate } from '../../../../admin/types'
-import { Card, CardContent, CardHeader, CardTitle } from '../../../../components/ui/Card'
 import { Button } from '../../../../components/ui/Button'
 import { Input } from '../../../../components/ui/Input'
-import { Badge } from '../../../../components/ui/Badge'
 import { Modal } from '../../../../components/ui/Modal'
+import { Switch } from '../../../../components/ui/Switch'
 import { useToast } from '../../../../components/ui/Toast'
 
 type SecurityTabProps = {
@@ -115,139 +113,119 @@ export function SecurityTab({
   }, [])
 
   return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>HTTPS 与 SSL 配置</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between p-4 border rounded-lg bg-card hover:bg-accent/5 transition-colors">
+    <div className="space-y-8">
+      <div>
+        <h3 className="text-lg font-medium mb-4">HTTPS 与 SSL 配置</h3>
+        <div className="space-y-4">
+          <div className="p-0">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <Switch
+                  checked={config.dataPlane?.enableHttps || false}
+                  onCheckedChange={(checked) => {
+                    if (checked) {
+                      setShowCertSelector(true)
+                    } else {
+                      updateConfig(prev => ({
+                        ...prev,
+                        dataPlane: { ...prev.dataPlane, enableHttps: false }
+                      }))
+                    }
+                  }}
+                />
+                <div>
+                  <div className="font-medium">启用全局 HTTPS</div>
+                  <div className="text-sm text-muted-foreground">
+                    {config.dataPlane?.enableHttps 
+                      ? `已启用 (证书ID: ${config.dataPlane?.certId || '未选择'})` 
+                      : '开启后将强制使用 HTTPS 访问'}
+                  </div>
+                </div>
+              </div>
+              <Button variant="secondary" onClick={() => setShowCertSelector(true)}>
+                {config.dataPlane?.enableHttps ? '更换证书' : '选择证书并开启'}
+              </Button>
+            </div>
+          </div>
+
+          <div className="p-0">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <Switch
+                  checked={config.security?.enableHsts || false}
+                  onCheckedChange={(checked) => updateConfig(prev => ({
+                    ...prev,
+                    security: { ...prev.security, enableHsts: checked }
+                  }))}
+                />
+                <div>
+                  <div className="font-medium">启用 HSTS (强制跳转)</div>
+                  <div className="text-sm text-muted-foreground">
+                    强制客户端使用 HTTPS 连接，防止降级攻击
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="border-t pt-6 space-y-4">
+        <div className="p-0">
+          <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
-              <div 
-                className="cursor-pointer text-primary"
-                onClick={() => {
-                  if (config.dataPlane?.enableHttps) {
-                    updateConfig(prev => ({
-                      ...prev,
-                      dataPlane: { ...prev.dataPlane, enableHttps: false }
-                    }))
-                  } else {
-                    setShowCertSelector(true)
+              <Switch
+                checked={originProtectionEnabled}
+                onCheckedChange={(checked) => {
+                  const next = checked ? 'enforced' : 'disabled'
+                  updateConfig(prev => ({
+                    ...prev,
+                    security: { ...prev.security, originProtectionMode: next }
+                  }))
+                  if (checked) {
+                    setCdnExpanded(true)
                   }
                 }}
-              >
-                {config.dataPlane?.enableHttps ? (
-                  <BsToggleOn size={28} className="text-primary" />
-                ) : (
-                  <BsToggleOff size={28} className="text-muted-foreground" />
-                )}
-              </div>
+              />
               <div>
-                <div className="font-medium">启用全局 HTTPS</div>
+                <div className="font-medium">回源保护</div>
                 <div className="text-sm text-muted-foreground">
-                  {config.dataPlane?.enableHttps 
-                    ? `已启用 (证书ID: ${config.dataPlane?.certId || '未选择'})` 
-                    : '开启后将强制使用 HTTPS 访问'}
-                </div>
-              </div>
-            </div>
-            <Button variant="secondary" onClick={() => setShowCertSelector(true)}>
-              {config.dataPlane?.enableHttps ? '更换证书' : '选择证书并开启'}
-            </Button>
-          </div>
-
-          <div className="flex items-center justify-between p-4 border rounded-lg bg-card hover:bg-accent/5 transition-colors">
-            <div className="flex items-center gap-3">
-              <div 
-                className="cursor-pointer"
-                onClick={() => updateConfig(prev => ({
-                  ...prev,
-                  security: { ...prev.security, enableHsts: !prev.security?.enableHsts }
-                }))}
-              >
-                {config.security?.enableHsts ? (
-                  <BsToggleOn size={28} className="text-primary" />
-                ) : (
-                  <BsToggleOff size={28} className="text-muted-foreground" />
-                )}
-              </div>
-              <div>
-                <div className="font-medium">启用 HSTS (强制跳转)</div>
-                <div className="text-sm text-muted-foreground">
-                  强制客户端使用 HTTPS 连接，防止降级攻击
+                  只允许特定的 CDN 回源 IP 访问，其他 IP 将被拒绝。
                 </div>
               </div>
             </div>
           </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader 
-          className="cursor-pointer flex flex-row items-center justify-between"
-          onClick={() => setCdnExpanded(!cdnExpanded)}
-        >
-          <div className="flex items-center gap-2">
-            {cdnExpanded ? <FiChevronDown /> : <FiChevronRight />}
-            <CardTitle>CDN 回源来源防护</CardTitle>
-          </div>
-          <Badge variant={originProtectionEnabled ? "primary" : "default"}>
-            {(config.security?.allowedCdnProviders || []).length} 已启用
-          </Badge>
-        </CardHeader>
+        </div>
         
-        {cdnExpanded && (
-          <CardContent className="space-y-6">
-            <div className="text-sm text-muted-foreground bg-muted/30 p-3 rounded-md">
-              启用后，网关将仅允许来自所选 CDN 厂商的回源 IP 访问，并对其他来源返回 403。
-              本项目仅负责定时拉取回源 IP，云侧回源策略需您自行开启/关闭。
-            </div>
-
+        {originProtectionEnabled && (
+          <div className="space-y-4 pt-4">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div
-                  className="cursor-pointer"
-                  onClick={() => {
-                    updateConfig(prev => ({
-                      ...prev,
-                      security: {
-                        ...prev.security,
-                        originProtectionMode: originProtectionEnabled ? 'disabled' : 'enforced'
-                      }
-                    }))
-                  }}
-                >
-                  {originProtectionEnabled ? (
-                    <BsToggleOn size={28} className="text-primary" />
-                  ) : (
-                    <BsToggleOff size={28} className="text-muted-foreground" />
-                  )}
-                </div>
-                <span className="font-medium">启用回源来源防护</span>
-              </div>
-
+              <div className="text-sm font-medium">CDN 提供商配置</div>
               <Button
-                variant="secondary"
+                variant="ghost"
                 size="sm"
                 onClick={loadOriginStatus}
                 disabled={loadingOriginStatus}
-                icon={<FiRefreshCw className={loadingOriginStatus ? "animate-spin" : ""} />}
+                icon={<FiRefreshCw className={loadingOriginStatus ? 'animate-spin' : ''} />}
               >
-                {loadingOriginStatus ? '刷新状态中...' : '刷新同步状态'}
+                刷新回源 IP
               </Button>
             </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {['aliyun', 'tencent', 'cloudflare'].map(provider => {
+            
+            <div className="space-y-3">
+              {['cloudflare', 'aliyun', 'tencent'].map((provider) => {
                 const isEnabled = allowedProviders.includes(provider)
-                const settings = config.security?.cdnProviderSettings?.[provider] || ({} as CDNProviderSetting)
-                // const status = originStatus[provider] // unused
-                const isExpanded = !!expandedProviders[provider]
+                const isExpanded = Boolean(expandedProviders[provider])
+                const settings = config.security?.cdnProviderSettings?.[provider] || {}
+                const canEnable = provider === 'cloudflare' 
+                  ? true 
+                  : (provider === 'aliyun' 
+                      ? settings.apiKey && settings.option 
+                      : settings.apiKey && settings.zoneId)
                 const enableError = getEnableError(provider, settings)
-                const canEnable = !enableError
-                
+
                 return (
-                  <Card key={provider} className={`border transition-all ${isEnabled ? 'border-primary/50 bg-primary/5' : ''}`}>
+                  <div key={provider} className={`border rounded-md transition-all ${isEnabled ? 'border-primary/50 bg-primary/5' : 'bg-card'}`}>
                     <div
                       className="p-4 flex items-center justify-between cursor-pointer"
                       onClick={() => setExpandedProviders(prev => ({ ...prev, [provider]: !prev[provider] }))}
@@ -257,28 +235,25 @@ export function SecurityTab({
                         {provider.toUpperCase()}
                       </div>
                       <div
-                        role="button"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          if (!isEnabled && !canEnable) {
-                            setExpandedProviders(prev => ({ ...prev, [provider]: true }))
-                            return
-                          }
-                          const current = allowedProviders
-                          const next = isEnabled
-                            ? current.filter(p => p !== provider)
-                            : [...current, provider]
-                          updateConfig(prev => ({
-                            ...prev,
-                            security: { ...prev.security, allowedCdnProviders: next }
-                          }))
-                        }}
+                        onClick={(e) => e.stopPropagation()}
                       >
-                        {isEnabled ? (
-                          <BsToggleOn size={24} className="text-primary" />
-                        ) : (
-                          <BsToggleOff size={24} className={!canEnable ? "text-muted-foreground/30" : "text-muted-foreground"} />
-                        )}
+                        <Switch
+                          checked={isEnabled}
+                          onCheckedChange={(checked) => {
+                            if (checked && !canEnable) {
+                              setExpandedProviders(prev => ({ ...prev, [provider]: true }))
+                              return
+                            }
+                            const current = allowedProviders
+                            const next = checked
+                              ? [...current, provider]
+                              : current.filter(p => p !== provider)
+                            updateConfig(prev => ({
+                              ...prev,
+                              security: { ...prev.security, allowedCdnProviders: next }
+                            }))
+                          }}
+                        />
                       </div>
                     </div>
                     
@@ -301,6 +276,7 @@ export function SecurityTab({
                               label="AccessKeyId"
                               placeholder="必填"
                               value={settings.apiKey || ''}
+                              layout="horizontal"
                               onChange={e => {
                                 const val = e.target.value
                                 updateConfig(prev => ({
@@ -320,6 +296,7 @@ export function SecurityTab({
                               type="password"
                               placeholder="仅写入不回显；留空表示保留历史值"
                               value={settings.secretKey || ''}
+                              layout="horizontal"
                               onChange={e => {
                                 const val = e.target.value
                                 updateConfig(prev => ({
@@ -338,6 +315,7 @@ export function SecurityTab({
                               label="ESA SiteId"
                               placeholder="必填"
                               value={settings.option || ''}
+                              layout="horizontal"
                               onChange={e => {
                                 const val = e.target.value
                                 updateConfig(prev => ({
@@ -356,6 +334,7 @@ export function SecurityTab({
                               label="ESA Endpoint"
                               placeholder="可选，默认使用官方端点"
                               value={settings.endpoint || ''}
+                              layout="horizontal"
                               onChange={e => {
                                 const val = e.target.value
                                 updateConfig(prev => ({
@@ -379,6 +358,7 @@ export function SecurityTab({
                               label="SecretId"
                               placeholder="必填"
                               value={settings.apiKey || ''}
+                              layout="horizontal"
                               onChange={e => {
                                 const val = e.target.value
                                 updateConfig(prev => ({
@@ -398,6 +378,7 @@ export function SecurityTab({
                               type="password"
                               placeholder="仅写入不回显；留空表示保留历史值"
                               value={settings.secretKey || ''}
+                              layout="horizontal"
                               onChange={e => {
                                 const val = e.target.value
                                 updateConfig(prev => ({
@@ -416,6 +397,7 @@ export function SecurityTab({
                               label="TEO ZoneId"
                               placeholder="必填"
                               value={settings.zoneId || ''}
+                              layout="horizontal"
                               onChange={e => {
                                 const val = e.target.value
                                 updateConfig(prev => ({
@@ -434,13 +416,13 @@ export function SecurityTab({
                         )}
                       </div>
                     )}
-                  </Card>
+                  </div>
                 )
               })}
             </div>
-          </CardContent>
+          </div>
         )}
-      </Card>
+      </div>
 
       <Modal
         isOpen={showCertSelector}

@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from 'react'
 import { FiRefreshCw, FiPlay, FiPause, FiTrash2, FiSearch } from 'react-icons/fi'
 import type { SiteLogEntry, SiteLogKind, SiteLogStream } from '../../../../admin/types'
-import { Card, CardContent, CardHeader, CardTitle } from '../../../../components/ui/Card'
 import { Input } from '../../../../components/ui/Input'
 import { Select } from '../../../../components/ui/Select'
 import { Button } from '../../../../components/ui/Button'
@@ -93,11 +92,9 @@ export function RealtimeLogTab({
 
   return (
     <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>实时日志</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-6">
+      <div className="space-y-6">
+        <h3 className="text-lg font-medium">实时日志</h3>
+        <div className="space-y-6">
           <div className="space-y-4">
             <div className="flex flex-col gap-2">
               <label className="text-sm font-medium">日志过滤规则 (Filter Query)</label>
@@ -237,8 +234,8 @@ export function RealtimeLogTab({
               )}
             </div>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   )
 }

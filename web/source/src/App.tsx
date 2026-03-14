@@ -18,7 +18,7 @@ import { OverviewSection } from './sections/OverviewSection'
 import { SystemSection } from './sections/SystemSection'
 import { TrafficSection } from './sections/TrafficSection'
 import { UiDemoSection } from './sections/UiDemoSection'
-import { LoginLayout } from './layout/LoginLayout'
+import LoginLayout from './layout/LoginLayout'
 import { MainLayout } from './layout/MainLayout'
 
 import { ToastProvider } from './components/ui/Toast'

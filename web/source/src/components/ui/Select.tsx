@@ -12,6 +12,7 @@ interface SelectProps extends React.SelectHTMLAttributes<HTMLSelectElement> {
   label?: string;
   error?: string;
   options: SelectOption[];
+  layout?: 'vertical' | 'horizontal';
 }
 
 export const Select: React.FC<SelectProps> = ({
@@ -19,6 +20,7 @@ export const Select: React.FC<SelectProps> = ({
   error,
   options,
   className = '',
+  layout = 'vertical',
   id,
   ...props
 }) => {
@@ -26,7 +28,7 @@ export const Select: React.FC<SelectProps> = ({
   const selectId = id || props.name || generatedId;
 
   return (
-    <div className={`select-wrapper ${className}`}>
+    <div className={`select-wrapper ${layout} ${className}`}>
       {label && (
         <label htmlFor={selectId} className="input-label">
           {label}

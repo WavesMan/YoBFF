@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { FiActivity, FiEye, FiLock, FiShuffle, FiSliders, FiLayers } from 'react-icons/fi'
-import { Sidebar, type SidebarItem } from '../components/Sidebar'
+import Sidebar, { type SidebarItem } from '../components/Sidebar'
 import { TopBar } from '../components/TopBar'
 
 type MainLayoutProps = {
@@ -19,7 +19,7 @@ const menuItems: SidebarItem[] = [
   { key: 'certificates', label: '证书管理', icon: <FiLock />, group: 'Traffic' },
   { key: 'observability', label: '观测中心', icon: <FiEye />, group: 'System' },
   { key: 'system', label: '系统设置', icon: <FiSliders />, group: 'System' },
-  { key: 'uidemo', label: 'UI Demo', icon: <FiLayers />, group: 'System' },
+  // { key: 'uidemo', label: 'UI Demo', icon: <FiLayers />, group: 'System' },
 ]
 
 export function MainLayout({

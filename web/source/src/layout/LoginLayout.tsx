@@ -24,12 +24,13 @@ type LoginLayoutProps = {
 
 export function LoginLayout({ onLoginSuccess }: LoginLayoutProps) {
     const { success, error } = useToast()
+    const logoSrc = import.meta.env.DEV ? '/Logo.png' : '/assets/Logo.png'
     const [captcha, setCaptcha] = useState<CaptchaResponse | null>(null)
     const [captchaRequired, setCaptchaRequired] = useState(false)
     const [isLoading, setIsLoading] = useState(false)
     const [showPassword, setShowPassword] = useState(false)
     const [loginForm, setLoginForm] = useState<LoginPayload>({
-        username: 'admin', // 默认填充以便测试，实际可为空
+        username: 'admin',
         password: '',
         captcha_id: '',
         captcha_code: '',
@@ -84,9 +85,6 @@ export function LoginLayout({ onLoginSuccess }: LoginLayoutProps) {
 
         setIsLoading(true)
         try {
-            // 模拟一点延迟以展示加载动画（实际项目中可移除）
-            // await new Promise(resolve => setTimeout(resolve, 800))
-
             const data = await loginAdmin(loginForm)
             const token = data.token
             if (!token) {
@@ -103,7 +101,6 @@ export function LoginLayout({ onLoginSuccess }: LoginLayoutProps) {
             const errorObj = err instanceof Error ? err : new Error('登录失败')
             error(errorObj)
             console.error('[Login Error]', errorObj.message)
-            // 登录失败通常需要刷新验证码
             await checkCaptcha()
         } finally {
             setIsLoading(false)
@@ -118,11 +115,10 @@ export function LoginLayout({ onLoginSuccess }: LoginLayoutProps) {
 
     return (
         <div className="login-page-body">
-            {/* 登录卡片 */}
             <div className="login-card-modern">
                 <div className="brand-section">
                     <div className="brand-logo">
-                        <img src="/Logo.png" alt="YoBFF Logo" />
+                        <img src={logoSrc} alt="YoBFF Logo" />
                     </div>
                     <h1 className="brand-title">YoBFF</h1>
                     <p className="brand-subtitle">管理端登录</p>
@@ -228,3 +224,5 @@ export function LoginLayout({ onLoginSuccess }: LoginLayoutProps) {
         </div>
     )
 }
+
+export default LoginLayout

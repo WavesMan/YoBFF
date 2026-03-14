@@ -33,9 +33,11 @@
   border-right: 1px solid var(--border);
   background: var(--bg-surface);
   padding: 20px 0;
+  flex-shrink: 0;
+  height: 100%;
 }
 
-.config-sidebar.tabs-list {
+.config-sidebar .tabs-list {
   display: flex;
   flex-direction: column;
   border-bottom: none;
@@ -45,11 +47,16 @@
   height: 100%; /* Fill available height */
 }
 
+.site-config-tabs {
+  flex-direction: row !important;
+  width: 100%;
+}
+
 .config-menu-item {
-  padding: 12px 20px;
+  padding: 10px 12px 10px 24px;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   cursor: pointer;
   color: var(--text-secondary);
   transition: all 0.2s;
@@ -57,13 +64,15 @@
   background: none;
   border: none;
   text-align: left;
-  font-size: 1rem;
+  font-size: 0.95rem;
 }
 
 .config-menu-item.tab-trigger {
-  border-radius: 0;
+  border-radius: 6px;
   justify-content: flex-start;
   font-weight: normal;
+  margin: 0 8px;
+  width: auto;
 }
 
 .config-menu-item.tab-trigger::after {
@@ -75,15 +84,17 @@
   color: var(--text-primary);
 }
 .config-menu-item.active {
-  background: var(--bg-hover);
+  background: var(--primary-dim);
   color: var(--primary);
-  border-right: 3px solid var(--primary);
+  font-weight: 500;
+  border-right: none;
 }
 .config-content {
   flex: 1;
-  padding: 30px;
+  padding: 24px;
   overflow-y: auto;
   background: var(--bg-surface);
+  height: 100%;
 }
 .panel {
   max-width: 900px;

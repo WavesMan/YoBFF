@@ -1,6 +1,5 @@
 import { FiRotateCcw, FiTrash2, FiClock, FiUser } from 'react-icons/fi'
 import type { ConfigVersion } from '../../../../admin/types'
-import { Card, CardContent, CardHeader, CardTitle } from '../../../../components/ui/Card'
 import { Button } from '../../../../components/ui/Button'
 import { Table } from '../../../../components/ui/Table'
 import { Badge } from '../../../../components/ui/Badge'
@@ -69,24 +68,24 @@ export function VersionHistoryTab({ versions, handleRollback, handleDeleteVersio
 
   return (
     <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>历史版本</CardTitle>
-        </CardHeader>
-        <CardContent>
+      <div className="space-y-6">
+        <h3 className="text-lg font-medium">历史版本</h3>
+        <div>
           {versions.length === 0 ? (
             <div className="p-8 text-center text-muted-foreground border rounded-lg border-dashed">
               暂无历史版本记录
             </div>
           ) : (
-            <Table
-              columns={columns}
-              data={versions}
-              rowKey="id"
-            />
+            <div className="border rounded-md overflow-hidden">
+              <Table
+                columns={columns}
+                data={versions}
+                rowKey="id"
+              />
+            </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   )
 }

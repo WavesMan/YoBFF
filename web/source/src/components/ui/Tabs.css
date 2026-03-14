@@ -13,6 +13,10 @@
   scrollbar-width: none; /* Firefox */
 }
 
+.tabs-list.grid {
+  display: grid;
+}
+
 .tabs-list::-webkit-scrollbar {
   display: none; /* Chrome/Safari */
 }

@@ -5,6 +5,7 @@ interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   label?: string;
   error?: string;
   icon?: React.ReactNode;
+  layout?: 'vertical' | 'horizontal';
 }
 
 export const Input: React.FC<InputProps> = ({
@@ -12,6 +13,7 @@ export const Input: React.FC<InputProps> = ({
   error,
   icon,
   className = '',
+  layout = 'vertical',
   id,
   ...props
 }) => {
@@ -19,7 +21,7 @@ export const Input: React.FC<InputProps> = ({
   const inputId = id || props.name || generatedId;
   
   return (
-    <div className={`input-wrapper ${className}`}>
+    <div className={`input-wrapper ${layout} ${className}`}>
       {label && (
         <label htmlFor={inputId} className="input-label">
           {label}

@@ -108,7 +108,7 @@ export function SiteConfigDrawer({ token, operator, siteId, onClose }: SiteConfi
             value={activeTab}
             defaultValue="basic"
             onValueChange={(v) => setActiveTab(v as typeof activeTab)} 
-            className="flex-1 flex overflow-hidden"
+            className="flex-1 flex overflow-hidden site-config-tabs"
           >
             <div className="config-sidebar">
               <TabsList className="flex flex-col h-full w-full bg-transparent p-0 justify-start space-y-1">

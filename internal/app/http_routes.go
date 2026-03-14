@@ -6,6 +6,7 @@ import (
 	"io"
 	"io/fs"
 	"net/http"
+	"net/url"
 	"strings"
 )
 
@@ -72,6 +73,15 @@ func NewUIHandler(fsys fs.FS) (http.Handler, error) {
 		if fileExists(fsys, path) {
 			fileServer.ServeHTTP(w, r)
 			return
+		}
+		if strings.HasPrefix(path, "assets/") {
+			altPath := strings.TrimPrefix(path, "assets/")
+			if fileExists(fsys, altPath) {
+				r2 := r.Clone(r.Context())
+				r2.URL = &url.URL{Path: "/" + altPath}
+				fileServer.ServeHTTP(w, r2)
+				return
+			}
 		}
 		serveIndex(w, r, fsys)
 	}), nil
