@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -231,7 +232,12 @@ func (s *Store) ListVersions(limit int) ([]ConfigVersion, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func(rows *sql.Rows) {
+		err := rows.Close()
+		if err != nil {
+			log.Printf("failed to close rows: %v", err)
+		}
+	}(rows)
 	var versions []ConfigVersion
 	for rows.Next() {
 		var item ConfigVersion
@@ -372,7 +378,12 @@ func (s *Store) ListCertificates(page, pageSize int) ([]config.SSLCertificate, i
 	if err != nil {
 		return nil, 0, err
 	}
-	defer rows.Close()
+	defer func(rows *sql.Rows) {
+		err := rows.Close()
+		if err != nil {
+
+		}
+	}(rows)
 
 	var certs []config.SSLCertificate
 	for rows.Next() {

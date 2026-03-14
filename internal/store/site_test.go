@@ -1,6 +1,7 @@
 package store
 
 import (
+	"database/sql"
 	"path/filepath"
 	"testing"
 
@@ -16,7 +17,12 @@ func TestStore_SiteLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("初始化存储失败: %v", err)
 	}
-	defer s.Close()
+	defer func(s *Store) {
+		closeErr := s.Close()
+		if closeErr != nil {
+
+		}
+	}(s)
 
 	// 2. 创建站点
 	site := Site{
@@ -67,7 +73,12 @@ func TestStore_SiteLifecycle(t *testing.T) {
 func TestStore_GetSiteConfigByHostname_NotFound(t *testing.T) {
 	tmpDir := t.TempDir()
 	s, _ := NewSQLiteStore(filepath.Join(tmpDir, "test.db"))
-	defer s.db.Close()
+	defer func(db *sql.DB) {
+		err := db.Close()
+		if err != nil {
+
+		}
+	}(s.db)
 
 	_, err := s.GetSiteConfigByHostname("unknown.com")
 	if err != ErrSiteNotFound {
@@ -90,7 +101,12 @@ func TestStore_SiteErrorsAndConfigVersion(t *testing.T) {
 	if err != nil {
 		t.Fatalf("初始化存储失败: %v", err)
 	}
-	defer s.Close()
+	defer func(s *Store) {
+		closeErr := s.Close()
+		if closeErr != nil {
+
+		}
+	}(s)
 
 	if _, err = s.CreateSite(Site{Name: "", Hostname: "a", IP: "1"}); err == nil {
 		t.Fatalf("缺失字段创建应失败")
@@ -143,7 +159,12 @@ func TestStore_ListAndLogStreamFlow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("初始化存储失败: %v", err)
 	}
-	defer s.Close()
+	defer func(s *Store) {
+		closeErr := s.Close()
+		if closeErr != nil {
+
+		}
+	}(s)
 
 	siteA, err := s.CreateSite(Site{Name: "A", Hostname: "a.example.com", IP: "10.0.0.1"})
 	if err != nil {
@@ -210,7 +231,12 @@ func TestStore_DeleteSiteAndUpdateConfig_SQLFailures(t *testing.T) {
 	if err != nil {
 		t.Fatalf("初始化存储失败: %v", err)
 	}
-	defer s.Close()
+	defer func(s *Store) {
+		closeErr := s.Close()
+		if closeErr != nil {
+
+		}
+	}(s)
 
 	site, err := s.CreateSite(Site{Name: "S1", Hostname: "s1.example.com", IP: "10.0.0.10"})
 	if err != nil {
@@ -228,7 +254,12 @@ func TestStore_DeleteSiteAndUpdateConfig_SQLFailures(t *testing.T) {
 	if err != nil {
 		t.Fatalf("初始化第二个存储失败: %v", err)
 	}
-	defer s2.Close()
+	defer func(s2 *Store) {
+		closeErr := s2.Close()
+		if closeErr != nil {
+
+		}
+	}(s2)
 
 	site2, err := s2.CreateSite(Site{Name: "S2", Hostname: "s2.example.com", IP: "10.0.0.11"})
 	if err != nil {
@@ -249,7 +280,12 @@ func TestStore_SiteVersionDeleteAndSiteLogs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("初始化存储失败: %v", err)
 	}
-	defer s.Close()
+	defer func(s *Store) {
+		closeErr := s.Close()
+		if closeErr != nil {
+
+		}
+	}(s)
 
 	site, err := s.CreateSite(Site{Name: "logs", Hostname: "logs.example.com", IP: "10.0.0.66"})
 	if err != nil {

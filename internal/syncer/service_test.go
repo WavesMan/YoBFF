@@ -38,7 +38,11 @@ func TestService_trySync(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(f.Name())
+	defer func(name string) {
+		if closeErr := os.Remove(name); closeErr != nil {
+			t.Logf("清理临时文件失败: %v", closeErr)
+		}
+	}(f.Name())
 
 	content := fmt.Sprintf(`{
 		"dataPlane": {"httpListenAddr": ":8080"},
@@ -55,8 +59,14 @@ func TestService_trySync(t *testing.T) {
 			}
 		}
 	}`, ts.URL)
-	f.WriteString(content)
-	f.Close()
+	_, err = f.WriteString(content)
+	if err != nil {
+		return
+	}
+	err = f.Close()
+	if err != nil {
+		return
+	}
 
 	manager, err := config.NewManager(f.Name())
 	if err != nil {
@@ -97,7 +107,12 @@ func TestService_shouldSync(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(f.Name())
+	defer func(name string) {
+		closeErr := os.Remove(name)
+		if closeErr != nil {
+
+		}
+	}(f.Name())
 
 	content := `{
 		"dataPlane": {"httpListenAddr": ":8080"},
@@ -111,8 +126,14 @@ func TestService_shouldSync(t *testing.T) {
 			"schedule": "@every 1m"
 		}
 	}`
-	f.WriteString(content)
-	f.Close()
+	_, err = f.WriteString(content)
+	if err != nil {
+		return
+	}
+	err = f.Close()
+	if err != nil {
+		return
+	}
 
 	manager, err := config.NewManager(f.Name())
 	if err != nil {
@@ -137,7 +158,12 @@ func TestService_RunAndStart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(f.Name())
+	defer func(name string) {
+		closeErr := os.Remove(name)
+		if closeErr != nil {
+
+		}
+	}(f.Name())
 	content := `{
 		"dataPlane": {"httpListenAddr": ":8080"},
 		"controlPlane": {"adminListenAddr": ":9090"},
@@ -179,7 +205,12 @@ func TestService_shouldSyncTable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(f.Name())
+	defer func(name string) {
+		closeErr := os.Remove(name)
+		if closeErr != nil {
+
+		}
+	}(f.Name())
 	content := `{
 		"dataPlane": {"httpListenAddr": ":8080"},
 		"controlPlane": {"adminListenAddr": ":9090"},
@@ -251,7 +282,12 @@ func TestService_SyncProviderErrorAndUnknown(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Remove(f.Name())
+	defer func(name string) {
+		closeErr := os.Remove(name)
+		if closeErr != nil {
+
+		}
+	}(f.Name())
 	content := `{
 		"dataPlane": {"httpListenAddr": ":8080"},
 		"routing": {"defaultUpstream": "http://localhost:8081"},

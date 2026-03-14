@@ -6,6 +6,7 @@ import (
 	"encoding/pem"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"strconv"
 	"strings"
@@ -138,14 +139,26 @@ func (s *Server) uploadCertificate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_request", "cert file is required", r)
 		return
 	}
-	defer certFile.Close()
+	defer func(certFile multipart.File) {
+		if closeErr := certFile.Close(); closeErr != nil {
+			if s.runtime != nil {
+				s.runtime.Logger().Warn("failed to close cert file", zap.Error(closeErr))
+			}
+		}
+	}(certFile)
 
 	keyFile, _, err := r.FormFile("key")
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_request", "key file is required", r)
 		return
 	}
-	defer keyFile.Close()
+	defer func(keyFile multipart.File) {
+		if closeErr := keyFile.Close(); closeErr != nil {
+			if s.runtime != nil {
+				s.runtime.Logger().Warn("failed to close key file", zap.Error(closeErr))
+			}
+		}
+	}(keyFile)
 
 	certBytes, err := io.ReadAll(certFile)
 	if err != nil {
@@ -176,8 +189,8 @@ func (s *Server) uploadCertificate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_certificate", message, r)
 		return
 	}
-	if _, err := tls.X509KeyPair(certPEM, keyPEM); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid_certificate", fmt.Sprintf("invalid certificate: 证书与私钥不匹配或格式不正确: %v", err), r)
+	if _, tlsErr := tls.X509KeyPair(certPEM, keyPEM); tlsErr != nil {
+		writeError(w, http.StatusBadRequest, "invalid_certificate", fmt.Sprintf("invalid certificate: 证书与私钥不匹配或格式不正确: %v", tlsErr), r)
 		return
 	}
 
@@ -194,13 +207,17 @@ func (s *Server) uploadCertificate(w http.ResponseWriter, r *http.Request) {
 		CreatedAt: time.Now(),
 	}
 
-	if err := s.store.CreateCertificate(cert); err != nil {
-		s.runtime.Logger().Error("failed to save certificate", zap.Error(err))
+	if createErr := s.store.CreateCertificate(cert); createErr != nil {
+		s.runtime.Logger().Error("failed to save certificate", zap.Error(createErr))
 		writeError(w, http.StatusInternalServerError, "internal_error", "failed to save certificate", r)
 		return
 	}
 
-	s.store.SaveAudit("create_cert", cert.ID, operatorFromRequest(r), map[string]any{"name": name})
+	if auditErr := s.store.SaveAudit("create_cert", cert.ID, operatorFromRequest(r), map[string]any{"name": name}); auditErr != nil {
+		if s.runtime != nil {
+			s.runtime.Logger().Warn("failed to save audit", zap.Error(auditErr), zap.String("action", "create_cert"), zap.String("target", cert.ID))
+		}
+	}
 	writeJSON(w, http.StatusOK, toSSLCertificateView(*cert))
 }
 
@@ -214,7 +231,11 @@ func (s *Server) deleteCertificate(w http.ResponseWriter, r *http.Request, id st
 		writeError(w, http.StatusInternalServerError, "internal_error", "failed to delete certificate", r)
 		return
 	}
-	s.store.SaveAudit("delete_cert", id, operatorFromRequest(r), nil)
+	if auditErr := s.store.SaveAudit("delete_cert", id, operatorFromRequest(r), nil); auditErr != nil {
+		if s.runtime != nil {
+			s.runtime.Logger().Warn("failed to save audit", zap.Error(auditErr), zap.String("action", "delete_cert"), zap.String("target", id))
+		}
+	}
 	w.WriteHeader(http.StatusNoContent)
 }
 

@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -79,7 +81,12 @@ func (p *Provider) fetch(ctx context.Context) ([]string, []string, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	defer resp.Body.Close()
+	defer func(Body io.ReadCloser) {
+		err := Body.Close()
+		if err != nil {
+			log.Printf("failed to close response body: %v", err)
+		}
+	}(resp.Body)
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, nil, fmt.Errorf("请求失败: status=%d", resp.StatusCode)
