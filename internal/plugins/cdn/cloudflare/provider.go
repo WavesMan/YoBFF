@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -83,7 +84,7 @@ func (p *Provider) fetch(ctx context.Context) ([]string, []string, error) {
 	defer func(Body io.ReadCloser) {
 		err := Body.Close()
 		if err != nil {
-
+			log.Printf("failed to close response body: %v", err)
 		}
 	}(resp.Body)
 

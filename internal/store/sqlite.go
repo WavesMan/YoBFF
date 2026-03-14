@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -234,7 +235,7 @@ func (s *Store) ListVersions(limit int) ([]ConfigVersion, error) {
 	defer func(rows *sql.Rows) {
 		err := rows.Close()
 		if err != nil {
-
+			log.Printf("failed to close rows: %v", err)
 		}
 	}(rows)
 	var versions []ConfigVersion

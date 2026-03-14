@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"log"
 	"strings"
 	"time"
 )
@@ -225,7 +226,7 @@ func (s *Store) ListSiteCDNOriginStatus(siteID string) ([]SiteCDNOriginStatus, e
 	defer func(rows *sql.Rows) {
 		err := rows.Close()
 		if err != nil {
-
+			log.Printf("failed to close rows: %v", err)
 		}
 	}(rows)
 
