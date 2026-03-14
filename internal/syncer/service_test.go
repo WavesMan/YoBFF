@@ -39,9 +39,8 @@ func TestService_trySync(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func(name string) {
-		err := os.Remove(name)
-		if err != nil {
-
+		if closeErr := os.Remove(name); closeErr != nil {
+			t.Logf("清理临时文件失败: %v", closeErr)
 		}
 	}(f.Name())
 
@@ -109,8 +108,8 @@ func TestService_shouldSync(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func(name string) {
-		err := os.Remove(name)
-		if err != nil {
+		closeErr := os.Remove(name)
+		if closeErr != nil {
 
 		}
 	}(f.Name())
@@ -160,8 +159,8 @@ func TestService_RunAndStart(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func(name string) {
-		err := os.Remove(name)
-		if err != nil {
+		closeErr := os.Remove(name)
+		if closeErr != nil {
 
 		}
 	}(f.Name())
@@ -207,8 +206,8 @@ func TestService_shouldSyncTable(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func(name string) {
-		err := os.Remove(name)
-		if err != nil {
+		closeErr := os.Remove(name)
+		if closeErr != nil {
 
 		}
 	}(f.Name())
@@ -284,8 +283,8 @@ func TestService_SyncProviderErrorAndUnknown(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func(name string) {
-		err := os.Remove(name)
-		if err != nil {
+		closeErr := os.Remove(name)
+		if closeErr != nil {
 
 		}
 	}(f.Name())

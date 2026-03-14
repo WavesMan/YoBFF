@@ -15,9 +15,8 @@ func TestManager_UpdateProviderStatus(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func(name string) {
-		err := os.Remove(name)
-		if err != nil {
-
+		if closeErr := os.Remove(name); closeErr != nil {
+			t.Logf("清理临时文件失败: %v", closeErr)
 		}
 	}(f.Name())
 	content := `{

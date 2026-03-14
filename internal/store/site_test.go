@@ -18,8 +18,8 @@ func TestStore_SiteLifecycle(t *testing.T) {
 		t.Fatalf("初始化存储失败: %v", err)
 	}
 	defer func(s *Store) {
-		err := s.Close()
-		if err != nil {
+		closeErr := s.Close()
+		if closeErr != nil {
 
 		}
 	}(s)
@@ -102,8 +102,8 @@ func TestStore_SiteErrorsAndConfigVersion(t *testing.T) {
 		t.Fatalf("初始化存储失败: %v", err)
 	}
 	defer func(s *Store) {
-		err := s.Close()
-		if err != nil {
+		closeErr := s.Close()
+		if closeErr != nil {
 
 		}
 	}(s)
@@ -160,8 +160,8 @@ func TestStore_ListAndLogStreamFlow(t *testing.T) {
 		t.Fatalf("初始化存储失败: %v", err)
 	}
 	defer func(s *Store) {
-		err := s.Close()
-		if err != nil {
+		closeErr := s.Close()
+		if closeErr != nil {
 
 		}
 	}(s)
@@ -232,8 +232,8 @@ func TestStore_DeleteSiteAndUpdateConfig_SQLFailures(t *testing.T) {
 		t.Fatalf("初始化存储失败: %v", err)
 	}
 	defer func(s *Store) {
-		err := s.Close()
-		if err != nil {
+		closeErr := s.Close()
+		if closeErr != nil {
 
 		}
 	}(s)
@@ -255,8 +255,8 @@ func TestStore_DeleteSiteAndUpdateConfig_SQLFailures(t *testing.T) {
 		t.Fatalf("初始化第二个存储失败: %v", err)
 	}
 	defer func(s2 *Store) {
-		err := s2.Close()
-		if err != nil {
+		closeErr := s2.Close()
+		if closeErr != nil {
 
 		}
 	}(s2)
@@ -281,8 +281,8 @@ func TestStore_SiteVersionDeleteAndSiteLogs(t *testing.T) {
 		t.Fatalf("初始化存储失败: %v", err)
 	}
 	defer func(s *Store) {
-		err := s.Close()
-		if err != nil {
+		closeErr := s.Close()
+		if closeErr != nil {
 
 		}
 	}(s)

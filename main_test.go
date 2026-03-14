@@ -72,9 +72,8 @@ func TestShutdownServer_Success(t *testing.T) {
 		t.Fatalf("监听失败: %v", err)
 	}
 	defer func(listener net.Listener) {
-		err := listener.Close()
-		if err != nil {
-
+		if closeErr := listener.Close(); closeErr != nil {
+			t.Logf("关闭监听失败: %v", closeErr)
 		}
 	}(listener)
 
@@ -110,9 +109,8 @@ func TestShutdownServer_CanceledContext(t *testing.T) {
 		t.Fatalf("监听失败: %v", err)
 	}
 	defer func(listener net.Listener) {
-		err := listener.Close()
-		if err != nil {
-
+		if err := listener.Close(); err != nil {
+			t.Logf("关闭监听失败: %v", err)
 		}
 	}(listener)
 

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"io/fs"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -129,9 +130,8 @@ func serveIndex(w http.ResponseWriter, r *http.Request, fsys fs.FS) {
 		return
 	}
 	defer func(file fs.File) {
-		err := file.Close()
-		if err != nil {
-
+		if closeErr := file.Close(); closeErr != nil {
+			log.Printf("failed to close file: %v", closeErr)
 		}
 	}(file)
 	info, err := file.Stat()
