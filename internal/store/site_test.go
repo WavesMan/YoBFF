@@ -2,6 +2,7 @@ package store
 
 import (
 	"database/sql"
+	"errors"
 	"path/filepath"
 	"testing"
 
@@ -81,7 +82,7 @@ func TestStore_GetSiteConfigByHostname_NotFound(t *testing.T) {
 	}(s.db)
 
 	_, err := s.GetSiteConfigByHostname("unknown.com")
-	if err != ErrSiteNotFound {
+	if !errors.Is(err, ErrSiteNotFound) {
 		t.Errorf("期望 ErrSiteNotFound，实际返回: %v", err)
 	}
 }
@@ -117,31 +118,31 @@ func TestStore_SiteErrorsAndConfigVersion(t *testing.T) {
 	if _, err = s.DeleteSite(""); err == nil {
 		t.Fatalf("空 siteID 删除应失败")
 	}
-	if _, err = s.GetSite("missing"); err != ErrSiteNotFound {
+	if _, err = s.GetSite("missing"); !errors.Is(err, ErrSiteNotFound) {
 		t.Fatalf("缺失站点错误不匹配: %v", err)
 	}
-	if _, err = s.GetSiteConfig("missing"); err != ErrSiteNotFound {
+	if _, err = s.GetSiteConfig("missing"); !errors.Is(err, ErrSiteNotFound) {
 		t.Fatalf("缺失站点配置错误不匹配: %v", err)
 	}
-	if _, err = s.GetSiteConfigByHostname("   "); err != ErrSiteNotFound {
+	if _, err = s.GetSiteConfigByHostname("   "); !errors.Is(err, ErrSiteNotFound) {
 		t.Fatalf("空主机名错误不匹配: %v", err)
 	}
 	if _, err = s.UpdateSiteConfig("", config.Config{}, "op", "src"); err == nil {
 		t.Fatalf("空 siteID 更新配置应失败")
 	}
-	if _, err = s.UpdateSiteConfig("missing", config.Config{}, "op", "src"); err != ErrSiteNotFound {
+	if _, err = s.UpdateSiteConfig("missing", config.Config{}, "op", "src"); !errors.Is(err, ErrSiteNotFound) {
 		t.Fatalf("缺失站点更新配置错误不匹配: %v", err)
 	}
 	if _, err = s.ListSiteVersions("", 1); err == nil {
 		t.Fatalf("空 siteID 查询版本应失败")
 	}
-	if _, err = s.GetSiteVersionConfig("missing", "v1"); err != ErrSiteVersionMissing {
+	if _, err = s.GetSiteVersionConfig("missing", "v1"); !errors.Is(err, ErrSiteVersionMissing) {
 		t.Fatalf("缺失版本错误不匹配: %v", err)
 	}
-	if _, err = s.RollbackSiteVersion("missing", "v1", "op"); err != ErrSiteVersionMissing {
+	if _, err = s.RollbackSiteVersion("missing", "v1", "op"); !errors.Is(err, ErrSiteVersionMissing) {
 		t.Fatalf("回滚缺失版本错误不匹配: %v", err)
 	}
-	if _, err = s.GetSiteLogStream("missing"); err != ErrSiteLogNotFound {
+	if _, err = s.GetSiteLogStream("missing"); !errors.Is(err, ErrSiteLogNotFound) {
 		t.Fatalf("缺失日志流错误不匹配: %v", err)
 	}
 	if _, err = s.UpdateSiteLogStream("", "q"); err == nil {
@@ -219,7 +220,7 @@ func TestStore_ListAndLogStreamFlow(t *testing.T) {
 	if _, err = s.DeleteSite(siteB.ID); err != nil {
 		t.Fatalf("删除站点失败: %v", err)
 	}
-	if _, err = s.GetSite(siteB.ID); err != ErrSiteNotFound {
+	if _, err = s.GetSite(siteB.ID); !errors.Is(err, ErrSiteNotFound) {
 		t.Fatalf("删除后查询错误不匹配: %v", err)
 	}
 }
@@ -304,7 +305,7 @@ func TestStore_SiteVersionDeleteAndSiteLogs(t *testing.T) {
 	if err = s.DeleteSiteVersion(site.ID, version.ID); err != nil {
 		t.Fatalf("删除站点版本失败: %v", err)
 	}
-	if err = s.DeleteSiteVersion(site.ID, version.ID); err != ErrSiteVersionMissing {
+	if err = s.DeleteSiteVersion(site.ID, version.ID); !errors.Is(err, ErrSiteVersionMissing) {
 		t.Fatalf("重复删除版本错误不匹配: %v", err)
 	}
 

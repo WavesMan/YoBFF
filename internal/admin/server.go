@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"io"
 	"net"
 	"net/http"
 	"strconv"
@@ -470,7 +471,7 @@ func requestIDFromContext(ctx context.Context) string {
 // 异常：无。
 func newRequestID() string {
 	buffer := make([]byte, 16)
-	if _, err := rand.Read(buffer); err != nil {
+	if _, err := io.ReadFull(rand.Reader, buffer); err != nil {
 		return strconv.FormatInt(time.Now().UnixNano(), 10)
 	}
 	return hex.EncodeToString(buffer)
@@ -481,11 +482,12 @@ func newRequestID() string {
 // 返回：操作人标识。
 // 异常：无。
 func operatorFromRequest(r *http.Request) string {
-	if r != nil {
-		if value := r.Context().Value(authenticatedOperatorKey); value != nil {
-			if operator, ok := value.(string); ok && strings.TrimSpace(operator) != "" {
-				return strings.TrimSpace(operator)
-			}
+	if r == nil {
+		return "unknown"
+	}
+	if value := r.Context().Value(authenticatedOperatorKey); value != nil {
+		if operator, ok := value.(string); ok && strings.TrimSpace(operator) != "" {
+			return strings.TrimSpace(operator)
 		}
 	}
 	operator := strings.TrimSpace(r.Header.Get("X-Operator"))

@@ -2,6 +2,7 @@ package admin
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -102,7 +103,7 @@ func (s *Server) weaverDraftDetail(w http.ResponseWriter, r *http.Request, draft
 	case http.MethodGet:
 		item, err := s.store.GetWeaverDraft(draftID)
 		if err != nil {
-			if err == store.ErrWeaverDraftNotFound {
+			if errors.Is(err, store.ErrWeaverDraftNotFound) {
 				writeError(w, http.StatusNotFound, "draft_not_found", "weaver draft not found", r)
 				return
 			}
@@ -120,7 +121,7 @@ func (s *Server) weaverDraftDetail(w http.ResponseWriter, r *http.Request, draft
 		draft.Operator = operatorFromRequest(r)
 		result, err := s.store.UpdateWeaverDraft(draft)
 		if err != nil {
-			if err == store.ErrWeaverDraftNotFound {
+			if errors.Is(err, store.ErrWeaverDraftNotFound) {
 				writeError(w, http.StatusNotFound, "draft_not_found", "weaver draft not found", r)
 				return
 			}
@@ -153,7 +154,7 @@ func (s *Server) runWeaverDraft(w http.ResponseWriter, r *http.Request, draftID 
 	}
 	draft, err := s.store.GetWeaverDraft(draftID)
 	if err != nil {
-		if err == store.ErrWeaverDraftNotFound {
+		if errors.Is(err, store.ErrWeaverDraftNotFound) {
 			writeError(w, http.StatusNotFound, "draft_not_found", "weaver draft not found", r)
 			return
 		}

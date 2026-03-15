@@ -94,7 +94,7 @@ func TestShutdownServer_Success(t *testing.T) {
 
 	select {
 	case err = <-serveErrCh:
-		if err != nil && err != http.ErrServerClosed {
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			t.Fatalf("Serve 退出错误: %v", err)
 		}
 	case <-time.After(2 * time.Second):
