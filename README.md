@@ -2,83 +2,93 @@
 
 [简体中文](./README_zh.md) | [English](./README.md)
 
-YoBFF is a lightweight, high-performance BFF (Backend For Frontend) gateway and load balancer designed to serve as a secure exit point for cluster services. It prioritizes operational transparency and security, providing a built-in management interface, automated origin protection, and atomic configuration rollbacks.
+YoBFF is a cloud-native BFF gateway and load balancer. It provides a Go-based data/control plane with a built-in React admin console.
 
-## Project Vision
+## What Is Implemented Today
 
-Traditional gateways often separate the data plane from the management interface or require complex external dependencies. YoBFF is built as a single, independent binary that encapsulates both the high-performance Go-based forwarding engine and a modern React-based control plane. It is specifically designed for cloud-native environments where origin IP leakage is a concern.
+### 1. Architecture & Deployment
+- Control plane and data plane run in one process with clear separation.
+- Admin UI can be served from embedded assets (Go embed) or an external directory via `ADMIN_UI_DIR`.
+- Single-binary deployment is supported, with state persisted in SQLite (`modernc.org/sqlite`, CGO-free).
 
-## Core Capabilities
+### 2. Gateway & Traffic Management
+- Host-based routing with exact and wildcard domain support.
+- Load balancer pools and route rules are manageable via API and admin UI.
+- HTTP/HTTPS forwarding with SNI certificate matching and certificate management.
+- `X-Forwarded-For` processing with trusted proxy CIDR validation.
 
-### 1. Architectural Integrity
-- Separation of Control Plane and Data Plane within a unified lifecycle.
-- Single-binary deployment with embedded UI assets using Go embed.
-- CGO-free implementation utilizing pure Go SQLite for state persistence.
-- Atomic configuration updates via memory snapshots to ensure zero-downtime reloads.
+### 3. Security & Access Control
+- Bearer token authentication for admin APIs.
+- Brute-force mitigation via captcha requirement after failed login attempts.
+- Request tracing with `X-Request-ID` and fixed-window rate limiting.
+- Configurable HSTS response header for HTTPS requests.
 
-### 2. Traffic Management & Load Balancing
-- Host-based routing supporting exact matches and wildcard domains.
-- Weighted Round-Robin (WRR) load balancing with health-aware node management.
-- Protocol support for HTTP and HTTPS (including SNI matching).
-- Primary/Fallback pool logic for high availability at the site level.
+### 4. Config Governance & Auditability
+- Config read/validate/apply/reload workflows.
+- Global config snapshot history, version listing, and rollback.
+- Site-level config versions, rollback, diff, and log stream settings.
+- Audit logs with filtering by action/operator/target/time and paginated responses.
+- Audit operator is bound to the authenticated login user, with `X-Operator` compatibility.
 
-### 3. Automated Origin Protection
-- Integrated plugins for Cloudflare, Aliyun ESA, and Tencent TEO.
-- Automated synchronization of cloud provider egress CIDRs to prevent unauthorized direct-to-ip access.
-- Custom 403 error page rendering with request tracking identifiers for rapid troubleshooting.
+### 5. CDN & Origin Protection
+- Built-in providers: Cloudflare, Aliyun ESA, Tencent TEO.
+- Scheduled CIDR synchronization from CDN providers.
+- Site-level CDN origin sync status query and manual refresh endpoints.
 
-### 4. Enterprise-Grade Configuration Control
-- Git-style versioning: Every configuration change is captured as a snapshot in the database.
-- Atomic Rollback: Revert to any historical configuration state via the UI with a single click.
-- AES-GCM Encryption: Sensitive data such as CDN API keys are encrypted at rest and never echoed in the UI or API responses.
-- Audit Logging: Comprehensive tracking of all administrative actions.
+### 6. Admin UI Modules
+- Available modules: Dashboard, Traffic, Certificates, Observability, System, Weaver.
+- Observability includes filterable and paginated audit log interactions.
+- Weaver supports draft create/update/list/detail/run and writes audit records.
 
-## Security Implementation
+## API Contract
 
-- Authentication: Bearer Token-based access control for all management APIs.
-- Brute-force Protection: Built-in login guard with fail-count aware Captcha requirements.
-- Edge Security: Support for HSTS and trusted proxy headers (X-Forwarded-For) with CIDR validation.
-- Privacy: Automated redaction of secrets in diffs and logs.
+- OpenAPI contract is located at: `contracts/openapi/admin.yaml`.
+- It includes login, config, LB pools/routes, site management, certificates, log stats, audit logs, and Weaver APIs.
 
 ## Quick Start
 
 ### Prerequisites
-- Go 1.22 or higher
-- Node.js (for frontend development only)
+- Go 1.24 or higher
+- Node.js (frontend development only)
+- pnpm (frontend development only)
 
-### Backend Execution
+### Run Backend
 1. Clone the repository.
-2. Initialize environment: `cp .env.example .env`.
-3. Run the gateway:
+2. Initialize environment variables: `cp .env.example .env` (use equivalent copy command on Windows).
+3. Start the service:
+
 ```bash
 go run .
 ```
-The management interface is accessible by default at `http://localhost:8080/admin`.
+
+Default endpoints:
+- Admin UI: `http://localhost:8080/admin`
+- Health check: `http://localhost:8080/healthz`
 
 ### Frontend Development
-1. Navigate to the source directory:
+1. Enter the frontend directory:
+
 ```bash
 cd web/source
 pnpm install
 pnpm dev
 ```
 
-## Technical Specification
+## Common Verification Commands
 
-- Backend: Go (Golang)
-- Frontend: React 19, TypeScript, Vite
-- Storage: SQLite (modernc.org/sqlite)
-- Logging: Asynchronous non-blocking pipeline using Uber-Zap
+- Backend tests: `go test ./...`
+- Backend static checks: `go vet ./...`
+- Frontend lint: `pnpm lint`
+- Frontend build: `pnpm build`
 
-## Roadmap (Planned Features)
+## Features (Planned)
 
-The following features are currently under consideration or in early development:
-
-- Dynamic Service Discovery: Native integration with Kubernetes Service APIs and Consul.
-- Application-Level Plugins: Support for JWT validation and OIDC proxying.
-- Observability: Prometheus metrics exporter and Grafana dashboard templates.
-- Cluster Sync: Configuration synchronization across multiple YoBFF instances using Etcd.
-- Advanced L7 Policies: Declarative request rewriting and circuit breaking.
+The following items are not completed yet:
+- Dynamic service discovery via Kubernetes Service APIs and Consul.
+- Application-level auth plugins (JWT validation and OIDC proxy).
+- Observability extension (Prometheus exporter and Grafana dashboards).
+- Multi-instance config synchronization using Etcd.
+- Advanced L7 policies (declarative rewrite, circuit breaking, etc.).
 
 ## License
 
