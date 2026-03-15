@@ -256,6 +256,22 @@ export type SiteLogHistoryResponse = {
   items: SiteLogEntry[]
 }
 
+export type AuditLogEntry = {
+  id: string
+  action: string
+  target?: string
+  created_at: string
+  operator?: string
+  detail?: string
+}
+
+export type AuditLogListResponse = {
+  items: AuditLogEntry[]
+  total?: number
+  page?: number
+  pageSize?: number
+}
+
 export type ConfigValidationResponse = {
   valid: boolean
   errors: ValidationIssue[]
@@ -270,6 +286,7 @@ export type LoginPayload = {
 
 export type LoginResponse = {
   token?: string
+  operator?: string
 }
 
 export type LoginCaptchaRequirementResponse = {
@@ -304,4 +321,35 @@ export type SiteCDNOriginRefreshResult = {
 export type SiteCDNOriginRefreshResponse = {
   status: string
   results: SiteCDNOriginRefreshResult[]
+}
+
+export type WeaverInput = {
+  name: string
+  payload: Record<string, unknown>
+}
+
+export type WeaverDraft = {
+  id: string
+  name: string
+  inputs: WeaverInput[]
+  mapping: Record<string, unknown>
+  created_at: string
+  updated_at: string
+  operator?: string
+}
+
+export type WeaverDraftListResponse = {
+  items: WeaverDraft[]
+}
+
+export type WeaverRunSource = {
+  name: string
+  ok: boolean
+  error?: string
+}
+
+export type WeaverRunResponse = {
+  output: unknown
+  duration_ms: number
+  sources: WeaverRunSource[]
 }

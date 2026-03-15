@@ -76,6 +76,10 @@ paths:
                   token:
                     type: string
                     example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                  operator:
+                    type: string
+                    description: 当前登录用户标识
+                    example: admin
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -1508,6 +1512,86 @@ paths:
           $ref: "#/components/responses/RateLimited"
         "503":
           $ref: "#/components/responses/AuthUnavailable"
+  /api/v1/audit/logs:
+    get:
+      summary: 获取审计日志列表
+      description: 支持按动作、操作人、目标和时间范围筛选，并返回分页结果。
+      parameters:
+        - in: query
+          name: action
+          schema:
+            type: string
+          required: false
+          description: 按动作类型精确筛选
+        - in: query
+          name: operator
+          schema:
+            type: string
+          required: false
+          description: 按操作人精确筛选
+        - in: query
+          name: target
+          schema:
+            type: string
+          required: false
+          description: 按目标标识精确筛选
+        - in: query
+          name: start_time
+          schema:
+            type: string
+            format: date-time
+          required: false
+          description: 起始时间，RFC3339 格式
+        - in: query
+          name: end_time
+          schema:
+            type: string
+            format: date-time
+          required: false
+          description: 结束时间，RFC3339 格式
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 500
+          required: false
+          description: 兼容参数，未传 pageSize 时作为每页数量使用
+        - in: query
+          name: page
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            default: 1
+          required: false
+          description: 页码，从 1 开始
+        - in: query
+          name: pageSize
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 500
+            default: 15
+          required: false
+          description: 每页条数
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditLogListResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/AuthUnavailable"
 components:
   securitySchemes:
     BearerAuth:
@@ -1646,6 +1730,47 @@ components:
           type: string
         request_id:
           type: string
+    AuditLogEntry:
+      type: object
+      required:
+        - id
+        - action
+        - created_at
+      properties:
+        id:
+          type: string
+        action:
+          type: string
+        target:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        operator:
+          type: string
+        detail:
+          type: string
+    AuditLogListResponse:
+      type: object
+      required:
+        - items
+        - total
+        - page
+        - pageSize
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AuditLogEntry"
+        total:
+          type: integer
+          format: int64
+        page:
+          type: integer
+          format: int32
+        pageSize:
+          type: integer
+          format: int32
     ValidationIssue:
       type: object
       required:

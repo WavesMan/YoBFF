@@ -154,6 +154,15 @@ func (s *Store) init() error {
 			key_pem TEXT NOT NULL,
 			created_at TEXT NOT NULL
 		);
+		CREATE TABLE IF NOT EXISTS weaver_drafts (
+			id TEXT PRIMARY KEY,
+			name TEXT NOT NULL,
+			inputs_json TEXT NOT NULL,
+			mapping_json TEXT NOT NULL,
+			created_at TEXT NOT NULL,
+			updated_at TEXT NOT NULL,
+			operator TEXT
+		);
 		CREATE INDEX IF NOT EXISTS idx_config_versions_created_at ON config_versions(created_at DESC);
 		CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at DESC);
 		CREATE INDEX IF NOT EXISTS idx_sites_hostname ON sites(hostname);
@@ -166,6 +175,7 @@ func (s *Store) init() error {
 		CREATE INDEX IF NOT EXISTS idx_site_traffic_logs_level ON site_traffic_logs(level);
 		CREATE INDEX IF NOT EXISTS idx_site_system_logs_site_time ON site_system_logs(site_id, created_at DESC);
 		CREATE INDEX IF NOT EXISTS idx_site_system_logs_level ON site_system_logs(level);
+		CREATE INDEX IF NOT EXISTS idx_weaver_drafts_created_at ON weaver_drafts(created_at DESC);
 	`)
 	return err
 }

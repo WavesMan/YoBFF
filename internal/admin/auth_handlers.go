@@ -121,7 +121,8 @@ func (s *Server) login(w http.ResponseWriter, r *http.Request) {
 		s.runtime.Logger().Info("管理员登录成功", zap.String("client", key))
 	}
 	writeJSON(w, http.StatusOK, map[string]string{
-		"token": auth.Token,
+		"token":    auth.Token,
+		"operator": auth.Username,
 	})
 }
 

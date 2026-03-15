@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { FiActivity, FiEye, FiLock, FiShuffle, FiSliders } from 'react-icons/fi'
+import { FiActivity, FiEye, FiLayers, FiLock, FiShuffle, FiSliders } from 'react-icons/fi'
 import Sidebar, { type SidebarItem } from '../components/Sidebar'
 import { TopBar } from '../components/TopBar'
 
@@ -18,6 +18,7 @@ const menuItems: SidebarItem[] = [
   { key: 'traffic', label: '流量管理', icon: <FiShuffle />, group: 'Traffic' },
   { key: 'certificates', label: '证书管理', icon: <FiLock />, group: 'Traffic' },
   { key: 'observability', label: '观测中心', icon: <FiEye />, group: 'System' },
+  { key: 'weaver', label: '可视化实验室', icon: <FiLayers />, group: 'Labs' },
   { key: 'system', label: '系统设置', icon: <FiSliders />, group: 'System' },
   // { key: 'uidemo', label: 'UI Demo', icon: <FiLayers />, group: 'System' },
 ]
@@ -49,6 +50,10 @@ export function MainLayout({
       observability: {
         title: '观测中心',
         subtitle: '日志检索、监控大盘与链路追踪',
+      },
+      weaver: {
+        title: '可视化实验室',
+        subtitle: '可视化草稿编辑与映射试跑工作台',
       },
       system: {
         title: '系统设置',

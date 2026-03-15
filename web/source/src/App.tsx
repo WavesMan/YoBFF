@@ -18,6 +18,7 @@ import { OverviewSection } from './sections/OverviewSection'
 import { SystemSection } from './sections/SystemSection'
 import { TrafficSection } from './sections/TrafficSection'
 import { UiDemoSection } from './sections/UiDemoSection'
+import { WeaverSection } from './sections/WeaverSection'
 import LoginLayout from './layout/LoginLayout'
 import { MainLayout } from './layout/MainLayout'
 
@@ -162,6 +163,13 @@ function App() {
               logStats={logStats}
               loadingHealth={loading.health}
               loadingLogStats={loading.logStats}
+              token={token || ''}
+            />
+          )}
+          {activeSection === 'weaver' && (
+            <WeaverSection
+              token={token || ''}
+              operator={operatorName || 'unknown'}
             />
           )}
           {activeSection === 'system' && (

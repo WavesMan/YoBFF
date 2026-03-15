@@ -51,3 +51,48 @@
   text-align: center;
   color: var(--text-secondary);
 }
+
+.table-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-top: 1px solid var(--border-subtle);
+  background-color: var(--bg-surface);
+}
+
+.table-pagination-info {
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+}
+
+.table-pagination-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.table-pagination-btn {
+  border: 1px solid var(--border-subtle);
+  background-color: var(--bg-surface-hover);
+  color: var(--text-primary);
+  border-radius: var(--radius-md);
+  padding: 0.4rem 0.7rem;
+  cursor: pointer;
+  font-size: 0.8125rem;
+}
+
+.table-pagination-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.table-pagination-size {
+  border: 1px solid var(--border-subtle);
+  background-color: var(--bg-surface-hover);
+  color: var(--text-primary);
+  border-radius: var(--radius-md);
+  padding: 0.35rem 0.45rem;
+  font-size: 0.8125rem;
+}

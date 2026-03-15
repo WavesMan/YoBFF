@@ -1,5 +1,6 @@
 import type {
   ApiError,
+  AuditLogListResponse,
   CaptchaResponse,
   CdnConfigResponse,
   Config,
@@ -27,6 +28,9 @@ import type {
   SiteCDNOriginRefreshResponse,
   SiteCDNOriginStatusListResponse,
   SSLCertificate,
+  WeaverDraft,
+  WeaverDraftListResponse,
+  WeaverRunResponse,
 } from './types'
 
 const API_BASE = '/admin/api/v1'
@@ -164,6 +168,36 @@ export async function fetchLogStats(token: string) {
   return apiRequest<LogStats>(`${API_BASE}/log/stats`, {}, token)
 }
 
+/**
+ *
+ * 读取审计日志列表，用于管理台操作追踪与筛选。
+ *
+ */
+export async function fetchAuditLogs(
+  token: string,
+  params: {
+    action?: string
+    operator?: string
+    target?: string
+    startTime?: string
+    endTime?: string
+    limit?: number
+    page?: number
+    pageSize?: number
+  }
+) {
+  const search = new URLSearchParams()
+  if (params.action) search.set('action', params.action)
+  if (params.operator) search.set('operator', params.operator)
+  if (params.target) search.set('target', params.target)
+  if (params.startTime) search.set('start_time', params.startTime)
+  if (params.endTime) search.set('end_time', params.endTime)
+  if (params.limit && params.limit > 0) search.set('limit', String(params.limit))
+  if (params.page && params.page > 0) search.set('page', String(params.page))
+  if (params.pageSize && params.pageSize > 0) search.set('pageSize', String(params.pageSize))
+  return apiRequest<AuditLogListResponse>(`${API_BASE}/audit/logs?${search.toString()}`, {}, token)
+}
+
 export async function fetchLogLevel(token: string) {
   return apiRequest<LogLevelResponse>(`${API_BASE}/log/level`, {}, token)
 }
@@ -279,6 +313,77 @@ export async function updateSiteConfig(token: string, id: string, config: Config
   return apiRequest<{ status: string }>(`${API_BASE}/sites/${id}/config`, {
     method: 'PUT',
     body: JSON.stringify(config),
+    headers: { 'X-Operator': operator },
+  }, token)
+}
+
+/**
+ *
+ * 拉取可视化实验草稿列表，用于实验室页面展示。
+ *
+ */
+export async function fetchWeaverDrafts(token: string, limit = 50) {
+  return apiRequest<WeaverDraftListResponse>(`${API_BASE}/weaver/drafts?limit=${limit}`, {}, token)
+}
+
+/**
+ *
+ * 读取指定草稿详情，用于继续编辑与运行。
+ *
+ */
+export async function fetchWeaverDraft(token: string, draftId: string) {
+  return apiRequest<WeaverDraft>(`${API_BASE}/weaver/drafts/${encodeURIComponent(draftId)}`, {}, token)
+}
+
+/**
+ *
+ * 新建可视化实验草稿，用于保存当前配置。
+ *
+ */
+export async function createWeaverDraft(
+  token: string,
+  payload: { name: string; inputs: unknown[]; mapping: Record<string, unknown> },
+  operator: string
+) {
+  return apiRequest<WeaverDraft>(`${API_BASE}/weaver/drafts`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+    headers: { 'X-Operator': operator },
+  }, token)
+}
+
+/**
+ *
+ * 更新可视化实验草稿，用于记录编辑状态。
+ *
+ */
+export async function updateWeaverDraft(
+  token: string,
+  draftId: string,
+  payload: { name: string; inputs: unknown[]; mapping: Record<string, unknown> },
+  operator: string
+) {
+  return apiRequest<WeaverDraft>(`${API_BASE}/weaver/drafts/${encodeURIComponent(draftId)}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+    headers: { 'X-Operator': operator },
+  }, token)
+}
+
+/**
+ *
+ * 运行可视化实验草稿，用于即时验证映射结果。
+ *
+ */
+export async function runWeaverDraft(
+  token: string,
+  draftId: string,
+  payload: { inputs?: unknown[]; mapping?: Record<string, unknown> },
+  operator: string
+) {
+  return apiRequest<WeaverRunResponse>(`${API_BASE}/weaver/drafts/${encodeURIComponent(draftId)}/run`, {
+    method: 'POST',
+    body: JSON.stringify(payload ?? {}),
     headers: { 'X-Operator': operator },
   }, token)
 }

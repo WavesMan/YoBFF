@@ -76,6 +76,10 @@ func (s *Server) Handler() http.Handler {
 	s.registerSiteRoutes(mux)
 	mux.Handle("/api/v1/log/level", withAuth(http.HandlerFunc(s.logLevel), s.manager))
 	mux.Handle("/api/v1/log/stats", withAuth(http.HandlerFunc(s.logStats), s.manager))
+	mux.Handle("/api/v1/audit/logs", withAuth(http.HandlerFunc(s.auditLogs), s.manager))
+
+	mux.Handle("/api/v1/weaver/drafts", withAuth(http.HandlerFunc(s.weaverDrafts), s.manager))
+	mux.Handle("/api/v1/weaver/drafts/", withAuth(http.HandlerFunc(s.weaverDraftRouter), s.manager))
 
 	// SSL 证书管理接口
 	mux.Handle("/api/v1/certs", withAuth(http.HandlerFunc(s.handleCertificates), s.manager))
@@ -426,6 +430,7 @@ func writeValidationError(w http.ResponseWriter, status int, code string, messag
 type contextKey string
 
 const requestIDKey contextKey = "request_id"
+const authenticatedOperatorKey contextKey = "authenticated_operator"
 
 // withRequestID 为请求生成或透传 request_id，并写入响应头与上下文。
 // 参数：next 为下一个处理器。
@@ -476,6 +481,13 @@ func newRequestID() string {
 // 返回：操作人标识。
 // 异常：无。
 func operatorFromRequest(r *http.Request) string {
+	if r != nil {
+		if value := r.Context().Value(authenticatedOperatorKey); value != nil {
+			if operator, ok := value.(string); ok && strings.TrimSpace(operator) != "" {
+				return strings.TrimSpace(operator)
+			}
+		}
+	}
 	operator := strings.TrimSpace(r.Header.Get("X-Operator"))
 	if operator == "" {
 		return "unknown"
@@ -489,7 +501,8 @@ func operatorFromRequest(r *http.Request) string {
 // 异常：无，鉴权失败时直接返回固定错误结构。
 func withAuth(next http.Handler, manager *config.Manager) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		token := manager.CurrentConfig().ControlPlane.Auth.Token
+		authConfig := manager.CurrentConfig().ControlPlane.Auth
+		token := authConfig.Token
 		if token == "" {
 			writeError(w, http.StatusServiceUnavailable, "auth_not_configured", "admin auth token missing", r)
 			return
@@ -508,7 +521,12 @@ func withAuth(next http.Handler, manager *config.Manager) http.Handler {
 			writeError(w, http.StatusUnauthorized, "unauthorized", "invalid token", r)
 			return
 		}
-		next.ServeHTTP(w, r)
+		operator := strings.TrimSpace(authConfig.Username)
+		ctx := r.Context()
+		if operator != "" {
+			ctx = context.WithValue(ctx, authenticatedOperatorKey, operator)
+		}
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 
