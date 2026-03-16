@@ -29,6 +29,7 @@ import type {
   SiteCDNOriginStatusListResponse,
   SSLCertificate,
   WeaverDraft,
+  WeaverDeleteResponse,
   WeaverDraftListResponse,
   WeaverRunResponse,
 } from './types'
@@ -384,6 +385,18 @@ export async function runWeaverDraft(
   return apiRequest<WeaverRunResponse>(`${API_BASE}/weaver/drafts/${encodeURIComponent(draftId)}/run`, {
     method: 'POST',
     body: JSON.stringify(payload ?? {}),
+    headers: { 'X-Operator': operator },
+  }, token)
+}
+
+/**
+ *
+ * 删除可视化实验草稿，用于清理无效配置。
+ *
+ */
+export async function deleteWeaverDraft(token: string, draftId: string, operator: string) {
+  return apiRequest<WeaverDeleteResponse>(`${API_BASE}/weaver/drafts/${encodeURIComponent(draftId)}`, {
+    method: 'DELETE',
     headers: { 'X-Operator': operator },
   }, token)
 }

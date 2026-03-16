@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { FiLayers, FiPlay, FiSave, FiPlus, FiTrash2, FiBox } from 'react-icons/fi'
-import { createWeaverDraft, fetchWeaverDraft, fetchWeaverDrafts, runWeaverDraft, updateWeaverDraft } from '../admin/api'
+import { createWeaverDraft, deleteWeaverDraft, fetchWeaverDraft, fetchWeaverDrafts, runWeaverDraft, updateWeaverDraft } from '../admin/api'
 import type { WeaverDraft, WeaverRunResponse } from '../admin/types'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
@@ -103,6 +103,30 @@ export function WeaverSection({ token, operator }: WeaverSectionProps) {
     setInputItems([])
     setMappingText('')
     setRunResult(null)
+  }
+
+  /**
+   *
+   * 删除当前草稿，用于清理无效实验记录。
+   *
+   */
+  const handleDeleteDraft = async () => {
+    if (!token) {
+      toast.error('请先登录后再删除')
+      return
+    }
+    if (!draftId) {
+      toast.error('请先选择草稿')
+      return
+    }
+    try {
+      await deleteWeaverDraft(token, draftId, operator)
+      toast.success('草稿删除成功')
+      handleCreateDraft()
+      await loadDraftList()
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '删除失败')
+    }
   }
 
   /**
@@ -281,6 +305,9 @@ export function WeaverSection({ token, operator }: WeaverSectionProps) {
             />
           </div>
           <div className="weaver-actions">
+            <Button variant="secondary" onClick={handleDeleteDraft} disabled={!draftId || savingDraft || runningDraft}>
+              <FiTrash2 className="mr-1" /> 删除
+            </Button>
             <Button variant="secondary" onClick={handleSaveDraft} disabled={savingDraft}>
               <FiSave className="mr-1" /> {savingDraft ? '保存中...' : '保存'}
             </Button>

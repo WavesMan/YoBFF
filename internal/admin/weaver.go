@@ -132,6 +132,31 @@ func (s *Server) weaverDraftDetail(w http.ResponseWriter, r *http.Request, draft
 			"name": result.Name,
 		})
 		writeJSON(w, http.StatusOK, result)
+	case http.MethodDelete:
+		item, err := s.store.GetWeaverDraft(draftID)
+		if err != nil {
+			if errors.Is(err, store.ErrWeaverDraftNotFound) {
+				writeError(w, http.StatusNotFound, "draft_not_found", "weaver draft not found", r)
+				return
+			}
+			writeError(w, http.StatusInternalServerError, "weaver_query_failed", err.Error(), r)
+			return
+		}
+		if err := s.store.DeleteWeaverDraft(draftID); err != nil {
+			if errors.Is(err, store.ErrWeaverDraftNotFound) {
+				writeError(w, http.StatusNotFound, "draft_not_found", "weaver draft not found", r)
+				return
+			}
+			writeError(w, http.StatusInternalServerError, "weaver_delete_failed", err.Error(), r)
+			return
+		}
+		_ = s.store.SaveAudit("weaver_delete", draftID, operatorFromRequest(r), map[string]any{
+			"name": item.Name,
+		})
+		writeJSON(w, http.StatusOK, map[string]any{
+			"status": "deleted",
+			"id":     draftID,
+		})
 	default:
 		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed", r)
 	}

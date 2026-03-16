@@ -71,6 +71,20 @@ func TestWeaverDraftRoutes_CRUDAndRun(t *testing.T) {
 	if !ok || len(items) == 0 {
 		t.Fatalf("草稿列表为空: %#v", listPayload)
 	}
+
+	deleteRec := requestWeaverWithToken(t, handler, http.MethodDelete, "/api/v1/weaver/drafts/"+draftID, nil)
+	if deleteRec.Code != http.StatusOK {
+		t.Fatalf("删除草稿失败: status=%d body=%s", deleteRec.Code, deleteRec.Body.String())
+	}
+	deletePayload := decodeWeaverPayload(t, deleteRec)
+	if status, _ := deletePayload["status"].(string); status != "deleted" {
+		t.Fatalf("删除结果状态异常: %#v", deletePayload)
+	}
+
+	detailAfterDelete := requestWeaverWithToken(t, handler, http.MethodGet, "/api/v1/weaver/drafts/"+draftID, nil)
+	if detailAfterDelete.Code != http.StatusNotFound {
+		t.Fatalf("删除后读取应为404: status=%d body=%s", detailAfterDelete.Code, detailAfterDelete.Body.String())
+	}
 }
 
 // TestWeaverDraftRoutes_InvalidPayloads 验证 Weaver 草稿接口的异常路径与错误码行为。
@@ -98,6 +112,14 @@ func TestWeaverDraftRoutes_InvalidPayloads(t *testing.T) {
 			method:     http.MethodPost,
 			target:     "/api/v1/weaver/drafts/not-exist/run",
 			body:       []byte(`{}`),
+			statusCode: http.StatusNotFound,
+			errorCode:  "draft_not_found",
+		},
+		{
+			name:       "删除草稿ID不存在",
+			method:     http.MethodDelete,
+			target:     "/api/v1/weaver/drafts/not-exist",
+			body:       nil,
 			statusCode: http.StatusNotFound,
 			errorCode:  "draft_not_found",
 		},

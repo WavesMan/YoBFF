@@ -34,6 +34,7 @@ func TestAdminOpenAPIContractConsistency(t *testing.T) {
 		"WeaverRunRequest:",
 		"WeaverRunResponse:",
 		"WeaverRunSource:",
+		"WeaverDeleteResponse:",
 	}
 	for _, schema := range requiredSchemas {
 		assertContains(t, content, schema)

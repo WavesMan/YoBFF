@@ -186,3 +186,28 @@ func (s *Store) ListWeaverDrafts(limit int) ([]WeaverDraft, error) {
 	}
 	return items, nil
 }
+
+// DeleteWeaverDraft 删除指定草稿，用于清理无效实验配置。
+// 参数：draftID 为草稿标识。
+// 返回：无。
+// 异常：草稿不存在或数据库操作失败时返回错误。
+func (s *Store) DeleteWeaverDraft(draftID string) error {
+	if s == nil || s.db == nil {
+		return errors.New("db not ready")
+	}
+	if draftID == "" {
+		return errors.New("draft id is empty")
+	}
+	result, err := s.db.Exec(`DELETE FROM weaver_drafts WHERE id = ?`, draftID)
+	if err != nil {
+		return err
+	}
+	affectedRows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affectedRows == 0 {
+		return ErrWeaverDraftNotFound
+	}
+	return nil
+}

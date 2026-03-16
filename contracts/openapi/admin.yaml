@@ -1744,6 +1744,39 @@ paths:
           $ref: "#/components/responses/RateLimited"
         "503":
           $ref: "#/components/responses/AuthUnavailable"
+    delete:
+      summary: 删除 Weaver 草稿
+      parameters:
+        - in: header
+          name: X-Operator
+          schema:
+            type: string
+          required: false
+          description: 操作人标识，未提供时自动回退到登录用户
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/RequestID"
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/RateLimitLimit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/RateLimitRemaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/RateLimitReset"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WeaverDeleteResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/WeaverDraftNotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/AuthUnavailable"
   /api/v1/weaver/drafts/{draft_id}/run:
     parameters:
       - in: path
@@ -2087,6 +2120,18 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/WeaverRunSource"
+    WeaverDeleteResponse:
+      type: object
+      required:
+        - status
+        - id
+      properties:
+        status:
+          type: string
+          enum:
+            - deleted
+        id:
+          type: string
     ValidationIssue:
       type: object
       required:

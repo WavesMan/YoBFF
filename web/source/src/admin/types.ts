@@ -353,3 +353,8 @@ export type WeaverRunResponse = {
   duration_ms: number
   sources: WeaverRunSource[]
 }
+
+export type WeaverDeleteResponse = {
+  status: 'deleted'
+  id: string
+}
