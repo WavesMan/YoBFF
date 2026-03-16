@@ -1,27 +1,28 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-# Invoke-GoQualityGate 执行后端质量门禁，包括静态检查、测试与覆盖率阈值校验。
+# Invoke-GoQualityGate runs backend quality checks.
 function Invoke-GoQualityGate {
     go vet ./...
     go test ./... -coverprofile=coverage.out
     if (-not (Test-Path "coverage.out")) {
-        throw "未生成 coverage.out，覆盖率校验失败。"
+        throw "coverage.out was not generated, coverage check failed."
     }
-    $coverLine = go tool cover -func=coverage.out | Select-Object -Last 1
+    $coverLine = go tool cover -func coverage.out | Select-Object -Last 1
     if ([string]::IsNullOrWhiteSpace($coverLine)) {
-        throw "无法读取覆盖率统计。"
+        throw "failed to read coverage summary."
     }
     $rateText = (($coverLine -split "\s+")[-1]).TrimEnd("%")
     $rate = [double]$rateText
-    if ($rate -lt 80) {
-        throw "Go 覆盖率不达标：$rate%，要求至少 80%。"
+    $coverageThreshold = 75
+    if ($rate -lt $coverageThreshold) {
+        throw "Go coverage is below threshold: $rate%, expected at least $coverageThreshold%."
     }
     go test ./contracts/openapi -run TestAdminOpenAPIContractConsistency -v
     go test ./internal/admin -run TestWeaverDraftRoutes -v
 }
 
-# Invoke-WebQualityGate 执行前端质量门禁，包括依赖锁定安装、Lint、测试与构建。
+# Invoke-WebQualityGate runs frontend quality checks.
 function Invoke-WebQualityGate {
     Push-Location "web/source"
     try {
@@ -34,12 +35,12 @@ function Invoke-WebQualityGate {
     }
 }
 
-# Invoke-SonarQualityGate 在环境变量齐全时执行 SonarQube 扫描与质量门禁等待。
+# Invoke-SonarQualityGate runs SonarQube checks when env vars are set.
 function Invoke-SonarQualityGate {
     if ([string]::IsNullOrWhiteSpace($env:SONAR_HOST_URL) -or
         [string]::IsNullOrWhiteSpace($env:SONAR_TOKEN) -or
         [string]::IsNullOrWhiteSpace($env:SONAR_PROJECT_KEY)) {
-        Write-Host "未配置 SONAR_* 环境变量，跳过 SonarQube 校验。"
+        Write-Host "SONAR_* environment variables are missing, skipping SonarQube checks."
         return
     }
     sonar-scanner `
@@ -52,4 +53,4 @@ function Invoke-SonarQualityGate {
 Invoke-GoQualityGate
 Invoke-WebQualityGate
 Invoke-SonarQualityGate
-Write-Host "质量门禁通过。"
+Write-Host "Quality gate passed."

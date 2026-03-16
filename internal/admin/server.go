@@ -81,6 +81,7 @@ func (s *Server) Handler() http.Handler {
 
 	mux.Handle("/api/v1/weaver/drafts", withAuth(http.HandlerFunc(s.weaverDrafts), s.manager))
 	mux.Handle("/api/v1/weaver/drafts/", withAuth(http.HandlerFunc(s.weaverDraftRouter), s.manager))
+	mux.Handle("/api/v1/weaver/versions/", withAuth(http.HandlerFunc(s.weaverVersionRouter), s.manager))
 
 	// SSL 证书管理接口
 	mux.Handle("/api/v1/certs", withAuth(http.HandlerFunc(s.handleCertificates), s.manager))

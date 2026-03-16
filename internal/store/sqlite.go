@@ -159,9 +159,23 @@ func (s *Store) init() error {
 			name TEXT NOT NULL,
 			inputs_json TEXT NOT NULL,
 			mapping_json TEXT NOT NULL,
+			dag_json TEXT NOT NULL DEFAULT '{}',
 			created_at TEXT NOT NULL,
 			updated_at TEXT NOT NULL,
 			operator TEXT
+		);
+		CREATE TABLE IF NOT EXISTS weaver_versions (
+			id TEXT PRIMARY KEY,
+			draft_id TEXT NOT NULL,
+			version_no INTEGER NOT NULL,
+			name TEXT NOT NULL,
+			inputs_json TEXT NOT NULL,
+			mapping_json TEXT NOT NULL,
+			dag_json TEXT NOT NULL,
+			node_contracts_json TEXT NOT NULL,
+			created_at TEXT NOT NULL,
+			operator TEXT,
+			source TEXT
 		);
 		CREATE INDEX IF NOT EXISTS idx_config_versions_created_at ON config_versions(created_at DESC);
 		CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at DESC);
@@ -176,7 +190,53 @@ func (s *Store) init() error {
 		CREATE INDEX IF NOT EXISTS idx_site_system_logs_site_time ON site_system_logs(site_id, created_at DESC);
 		CREATE INDEX IF NOT EXISTS idx_site_system_logs_level ON site_system_logs(level);
 		CREATE INDEX IF NOT EXISTS idx_weaver_drafts_created_at ON weaver_drafts(created_at DESC);
+		CREATE INDEX IF NOT EXISTS idx_weaver_versions_draft_version ON weaver_versions(draft_id, version_no DESC);
+		CREATE INDEX IF NOT EXISTS idx_weaver_versions_created_at ON weaver_versions(created_at DESC);
 	`)
+	if err != nil {
+		return err
+	}
+	if err = ensureSQLiteColumn(s.db, "weaver_drafts", "dag_json", "TEXT NOT NULL DEFAULT '{}'"); err != nil {
+		return err
+	}
+	return err
+}
+
+// ensureSQLiteColumn 确保指定列存在，不存在时执行补齐迁移。
+// 参数：db 为数据库连接，tableName 为表名，columnName 为列名，columnDef 为列定义。
+// 返回：迁移错误信息。
+// 异常：查询表结构失败或列新增失败时返回错误。
+func ensureSQLiteColumn(db *sql.DB, tableName string, columnName string, columnDef string) error {
+	if db == nil {
+		return errors.New("db not ready")
+	}
+	rows, err := db.Query(`PRAGMA table_info(` + tableName + `)`)
+	if err != nil {
+		return err
+	}
+	defer func(rows *sql.Rows) {
+		_ = rows.Close()
+	}(rows)
+	for rows.Next() {
+		var cid int
+		var name string
+		var colType string
+		var notNull int
+		var defaultValue sql.NullString
+		var pk int
+		scanErr := rows.Scan(&cid, &name, &colType, &notNull, &defaultValue, &pk)
+		if scanErr != nil {
+			return scanErr
+		}
+		if strings.EqualFold(name, columnName) {
+			return nil
+		}
+	}
+	rowsErr := rows.Err()
+	if rowsErr != nil {
+		return rowsErr
+	}
+	_, err = db.Exec(`ALTER TABLE ` + tableName + ` ADD COLUMN ` + columnName + ` ` + columnDef)
 	return err
 }
 

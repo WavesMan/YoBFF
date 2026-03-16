@@ -87,6 +87,78 @@ func TestWeaverDraftRoutes_CRUDAndRun(t *testing.T) {
 	}
 }
 
+// TestWeaverDraftRoutes_PublishAndRunVersion 验证草稿发布、版本查询与版本运行链路。
+func TestWeaverDraftRoutes_PublishAndRunVersion(t *testing.T) {
+	handler, _ := buildSiteHandler(t)
+	createBody := []byte(`{
+		"name":"order-dag",
+		"inputs":[{"name":"order","payload":{"id":"o-2001","amount":188}}],
+		"mapping":{"result":"$.order.id"},
+		"dag":{
+			"nodes":[
+				{"id":"fetch-order","type":"source","inputs":["order"],"outputs":["order"]},
+				{"id":"render","type":"transform","inputs":["order"],"outputs":["result"]}
+			],
+			"edges":[{"from":"fetch-order","to":"render"}],
+			"output_node_id":"render"
+		}
+	}`)
+	createRec := requestWeaverWithToken(t, handler, http.MethodPost, "/api/v1/weaver/drafts", createBody)
+	if createRec.Code != http.StatusOK {
+		t.Fatalf("创建草稿失败: status=%d body=%s", createRec.Code, createRec.Body.String())
+	}
+	createPayload := decodeWeaverPayload(t, createRec)
+	draftID, _ := createPayload["id"].(string)
+	if draftID == "" {
+		t.Fatalf("草稿ID为空: %#v", createPayload)
+	}
+
+	publishRec := requestWeaverWithToken(t, handler, http.MethodPost, "/api/v1/weaver/drafts/"+draftID+"/publish", nil)
+	if publishRec.Code != http.StatusOK {
+		t.Fatalf("发布草稿失败: status=%d body=%s", publishRec.Code, publishRec.Body.String())
+	}
+	publishPayload := decodeWeaverPayload(t, publishRec)
+	versionID, _ := publishPayload["id"].(string)
+	if versionID == "" {
+		t.Fatalf("版本ID为空: %#v", publishPayload)
+	}
+	if versionNo, ok := publishPayload["version"].(float64); !ok || versionNo < 1 {
+		t.Fatalf("版本号异常: %#v", publishPayload)
+	}
+	nodeContracts, ok := publishPayload["node_contracts"].([]any)
+	if !ok || len(nodeContracts) != 2 {
+		t.Fatalf("节点契约冻结结果异常: %#v", publishPayload)
+	}
+
+	listVersionRec := requestWeaverWithToken(t, handler, http.MethodGet, "/api/v1/weaver/drafts/"+draftID+"/versions?limit=10", nil)
+	if listVersionRec.Code != http.StatusOK {
+		t.Fatalf("读取版本列表失败: status=%d body=%s", listVersionRec.Code, listVersionRec.Body.String())
+	}
+	listVersionPayload := decodeWeaverPayload(t, listVersionRec)
+	items, ok := listVersionPayload["items"].([]any)
+	if !ok || len(items) == 0 {
+		t.Fatalf("版本列表为空: %#v", listVersionPayload)
+	}
+
+	versionDetailRec := requestWeaverWithToken(t, handler, http.MethodGet, "/api/v1/weaver/versions/"+versionID, nil)
+	if versionDetailRec.Code != http.StatusOK {
+		t.Fatalf("读取版本详情失败: status=%d body=%s", versionDetailRec.Code, versionDetailRec.Body.String())
+	}
+
+	runVersionRec := requestWeaverWithToken(t, handler, http.MethodPost, "/api/v1/weaver/versions/"+versionID+"/run", []byte(`{}`))
+	if runVersionRec.Code != http.StatusOK {
+		t.Fatalf("运行版本失败: status=%d body=%s", runVersionRec.Code, runVersionRec.Body.String())
+	}
+	runVersionPayload := decodeWeaverPayload(t, runVersionRec)
+	output, ok := runVersionPayload["output"].(map[string]any)
+	if !ok {
+		t.Fatalf("运行版本输出异常: %#v", runVersionPayload)
+	}
+	if _, ok := output["dag_output"]; !ok {
+		t.Fatalf("运行版本缺少 dag_output: %#v", runVersionPayload)
+	}
+}
+
 // TestWeaverDraftRoutes_InvalidPayloads 验证 Weaver 草稿接口的异常路径与错误码行为。
 func TestWeaverDraftRoutes_InvalidPayloads(t *testing.T) {
 	handler, _ := buildSiteHandler(t)
@@ -122,6 +194,14 @@ func TestWeaverDraftRoutes_InvalidPayloads(t *testing.T) {
 			body:       nil,
 			statusCode: http.StatusNotFound,
 			errorCode:  "draft_not_found",
+		},
+		{
+			name:       "读取流程版本不存在",
+			method:     http.MethodGet,
+			target:     "/api/v1/weaver/versions/not-exist",
+			body:       nil,
+			statusCode: http.StatusNotFound,
+			errorCode:  "version_not_found",
 		},
 	}
 

@@ -1827,6 +1827,179 @@ paths:
           $ref: "#/components/responses/RateLimited"
         "503":
           $ref: "#/components/responses/AuthUnavailable"
+  /api/v1/weaver/drafts/{draft_id}/publish:
+    parameters:
+      - in: path
+        name: draft_id
+        schema:
+          type: string
+        required: true
+        description: 草稿标识
+    post:
+      summary: 发布 Weaver 草稿
+      description: 将草稿发布为可追踪的流程版本，并冻结节点接口契约。
+      parameters:
+        - in: header
+          name: X-Operator
+          schema:
+            type: string
+          required: false
+          description: 操作人标识，未提供时自动回退到登录用户
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/RequestID"
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/RateLimitLimit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/RateLimitRemaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/RateLimitReset"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WeaverVersion"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/WeaverDraftNotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/AuthUnavailable"
+  /api/v1/weaver/drafts/{draft_id}/versions:
+    parameters:
+      - in: path
+        name: draft_id
+        schema:
+          type: string
+        required: true
+        description: 草稿标识
+    get:
+      summary: 获取 Weaver 草稿版本列表
+      description: 返回指定草稿的发布版本快照，按版本号倒序排列。
+      parameters:
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 200
+            default: 20
+          required: false
+          description: 返回条数上限
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/RequestID"
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/RateLimitLimit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/RateLimitRemaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/RateLimitReset"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WeaverVersionListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/AuthUnavailable"
+  /api/v1/weaver/versions/{version_id}:
+    parameters:
+      - in: path
+        name: version_id
+        schema:
+          type: string
+        required: true
+        description: 流程版本标识
+    get:
+      summary: 获取 Weaver 流程版本详情
+      description: 返回发布版本的冻结输入、映射、DAG 与节点契约。
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/RequestID"
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/RateLimitLimit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/RateLimitRemaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/RateLimitReset"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WeaverVersion"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/VersionNotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/AuthUnavailable"
+  /api/v1/weaver/versions/{version_id}/run:
+    parameters:
+      - in: path
+        name: version_id
+        schema:
+          type: string
+        required: true
+        description: 流程版本标识
+    post:
+      summary: 运行 Weaver 流程版本
+      description: 使用冻结版本执行 DAG，允许覆盖运行 inputs。
+      parameters:
+        - in: header
+          name: X-Operator
+          schema:
+            type: string
+          required: false
+          description: 操作人标识，未提供时自动回退到登录用户
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WeaverRunRequest"
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/RequestID"
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/RateLimitLimit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/RateLimitRemaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/RateLimitReset"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WeaverRunResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/VersionNotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/AuthUnavailable"
 components:
   securitySchemes:
     BearerAuth:
@@ -2043,6 +2216,8 @@ components:
         mapping:
           type: object
           additionalProperties: true
+        dag:
+          $ref: "#/components/schemas/WeaverDAG"
     WeaverDraft:
       type: object
       required:
@@ -2064,6 +2239,8 @@ components:
         mapping:
           type: object
           additionalProperties: true
+        dag:
+          $ref: "#/components/schemas/WeaverDAG"
         created_at:
           type: string
           format: date-time
@@ -2091,6 +2268,8 @@ components:
         mapping:
           type: object
           additionalProperties: true
+        dag:
+          $ref: "#/components/schemas/WeaverDAG"
     WeaverRunSource:
       type: object
       required:
@@ -2132,6 +2311,124 @@ components:
             - deleted
         id:
           type: string
+    WeaverDAGNode:
+      type: object
+      required:
+        - id
+        - type
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+        inputs:
+          type: array
+          items:
+            type: string
+        outputs:
+          type: array
+          items:
+            type: string
+        config:
+          type: object
+          additionalProperties: true
+    WeaverDAGEdge:
+      type: object
+      required:
+        - from
+        - to
+      properties:
+        from:
+          type: string
+        to:
+          type: string
+    WeaverDAG:
+      type: object
+      required:
+        - nodes
+        - edges
+      properties:
+        nodes:
+          type: array
+          items:
+            $ref: "#/components/schemas/WeaverDAGNode"
+        edges:
+          type: array
+          items:
+            $ref: "#/components/schemas/WeaverDAGEdge"
+        output_node_id:
+          type: string
+    WeaverNodeContract:
+      type: object
+      required:
+        - node_id
+        - type
+        - inputs
+        - outputs
+      properties:
+        node_id:
+          type: string
+        type:
+          type: string
+        inputs:
+          type: array
+          items:
+            type: string
+        outputs:
+          type: array
+          items:
+            type: string
+    WeaverVersion:
+      type: object
+      required:
+        - id
+        - draft_id
+        - version
+        - name
+        - inputs
+        - mapping
+        - dag
+        - node_contracts
+        - created_at
+      properties:
+        id:
+          type: string
+        draft_id:
+          type: string
+        version:
+          type: integer
+          format: int32
+        name:
+          type: string
+        inputs:
+          type: array
+          items:
+            $ref: "#/components/schemas/WeaverInputPayload"
+        mapping:
+          type: object
+          additionalProperties: true
+        dag:
+          $ref: "#/components/schemas/WeaverDAG"
+        node_contracts:
+          type: array
+          items:
+            $ref: "#/components/schemas/WeaverNodeContract"
+        created_at:
+          type: string
+          format: date-time
+        operator:
+          type: string
+        source:
+          type: string
+    WeaverVersionListResponse:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/WeaverVersion"
     ValidationIssue:
       type: object
       required:

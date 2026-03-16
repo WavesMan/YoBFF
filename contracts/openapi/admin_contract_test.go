@@ -22,6 +22,10 @@ func TestAdminOpenAPIContractConsistency(t *testing.T) {
 		"/api/v1/weaver/drafts:",
 		"/api/v1/weaver/drafts/{draft_id}:",
 		"/api/v1/weaver/drafts/{draft_id}/run:",
+		"/api/v1/weaver/drafts/{draft_id}/publish:",
+		"/api/v1/weaver/drafts/{draft_id}/versions:",
+		"/api/v1/weaver/versions/{version_id}:",
+		"/api/v1/weaver/versions/{version_id}/run:",
 	}
 	for _, route := range requiredPaths {
 		assertContains(t, content, route)
@@ -35,6 +39,10 @@ func TestAdminOpenAPIContractConsistency(t *testing.T) {
 		"WeaverRunResponse:",
 		"WeaverRunSource:",
 		"WeaverDeleteResponse:",
+		"WeaverDAG:",
+		"WeaverNodeContract:",
+		"WeaverVersion:",
+		"WeaverVersionListResponse:",
 	}
 	for _, schema := range requiredSchemas {
 		assertContains(t, content, schema)
@@ -43,6 +51,7 @@ func TestAdminOpenAPIContractConsistency(t *testing.T) {
 	requiredResponseRefs := []string{
 		"WeaverDraftNotFound:",
 		"error_code: draft_not_found",
+		"error_code: version_not_found",
 	}
 	for _, item := range requiredResponseRefs {
 		assertContains(t, content, item)

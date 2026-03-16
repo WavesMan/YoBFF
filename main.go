@@ -25,7 +25,7 @@ import (
 	"go.uber.org/zap"
 )
 
-//go:embed web/ui/* web/ui/assets/* web/ui/vite.svg
+//go:embed web/source
 var embeddedUI embed.FS
 
 type serverStarter interface {
@@ -239,7 +239,7 @@ func buildUIHandler() (http.Handler, error) {
 	if dir != "" {
 		return app.NewUIHandler(os.DirFS(dir))
 	}
-	sub, err := fs.Sub(embeddedUI, "web/ui")
+	sub, err := fs.Sub(embeddedUI, "web/source")
 	if err != nil {
 		return nil, err
 	}
