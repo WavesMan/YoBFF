@@ -1592,6 +1592,208 @@ paths:
           $ref: "#/components/responses/RateLimited"
         "503":
           $ref: "#/components/responses/AuthUnavailable"
+  /api/v1/weaver/drafts:
+    get:
+      summary: 获取 Weaver 草稿列表
+      description: 返回可视化聚合编排草稿列表，按创建时间倒序排列。
+      parameters:
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 200
+            default: 50
+          required: false
+          description: 返回条数上限
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/RequestID"
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/RateLimitLimit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/RateLimitRemaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/RateLimitReset"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WeaverDraftListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/AuthUnavailable"
+    post:
+      summary: 创建 Weaver 草稿
+      description: 创建用于可视化 API 聚合编排的草稿。
+      parameters:
+        - in: header
+          name: X-Operator
+          schema:
+            type: string
+          required: false
+          description: 操作人标识，未提供时自动回退到登录用户
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WeaverDraftRequest"
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/RequestID"
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/RateLimitLimit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/RateLimitRemaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/RateLimitReset"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WeaverDraft"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/AuthUnavailable"
+  /api/v1/weaver/drafts/{draft_id}:
+    parameters:
+      - in: path
+        name: draft_id
+        schema:
+          type: string
+        required: true
+        description: 草稿标识
+    get:
+      summary: 获取 Weaver 草稿详情
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/RequestID"
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/RateLimitLimit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/RateLimitRemaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/RateLimitReset"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WeaverDraft"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/WeaverDraftNotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/AuthUnavailable"
+    put:
+      summary: 更新 Weaver 草稿
+      parameters:
+        - in: header
+          name: X-Operator
+          schema:
+            type: string
+          required: false
+          description: 操作人标识，未提供时自动回退到登录用户
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WeaverDraftRequest"
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/RequestID"
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/RateLimitLimit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/RateLimitRemaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/RateLimitReset"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WeaverDraft"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/WeaverDraftNotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/AuthUnavailable"
+  /api/v1/weaver/drafts/{draft_id}/run:
+    parameters:
+      - in: path
+        name: draft_id
+        schema:
+          type: string
+        required: true
+        description: 草稿标识
+    post:
+      summary: 运行 Weaver 草稿
+      description: 使用草稿内输入与映射进行试跑，也可在请求体覆盖输入或映射。
+      parameters:
+        - in: header
+          name: X-Operator
+          schema:
+            type: string
+          required: false
+          description: 操作人标识，未提供时自动回退到登录用户
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WeaverRunRequest"
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/RequestID"
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/RateLimitLimit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/RateLimitRemaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/RateLimitReset"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WeaverRunResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/WeaverDraftNotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/AuthUnavailable"
 components:
   securitySchemes:
     BearerAuth:
@@ -1716,6 +1918,16 @@ components:
             error_code: log_stream_not_found
             message: log stream not found
             request_id: req_109238475c
+    WeaverDraftNotFound:
+      description: Weaver 草稿不存在
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error_code: draft_not_found
+            message: weaver draft not found
+            request_id: req_109238475w
   schemas:
     ErrorResponse:
       type: object
@@ -1771,6 +1983,110 @@ components:
         pageSize:
           type: integer
           format: int32
+    WeaverInputPayload:
+      type: object
+      required:
+        - name
+        - payload
+      properties:
+        name:
+          type: string
+        payload:
+          type: object
+          additionalProperties: true
+    WeaverDraftRequest:
+      type: object
+      required:
+        - name
+        - inputs
+        - mapping
+      properties:
+        name:
+          type: string
+        inputs:
+          type: array
+          items:
+            $ref: "#/components/schemas/WeaverInputPayload"
+        mapping:
+          type: object
+          additionalProperties: true
+    WeaverDraft:
+      type: object
+      required:
+        - id
+        - name
+        - inputs
+        - mapping
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        inputs:
+          type: array
+          items:
+            $ref: "#/components/schemas/WeaverInputPayload"
+        mapping:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        operator:
+          type: string
+    WeaverDraftListResponse:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/WeaverDraft"
+    WeaverRunRequest:
+      type: object
+      properties:
+        inputs:
+          type: array
+          items:
+            $ref: "#/components/schemas/WeaverInputPayload"
+        mapping:
+          type: object
+          additionalProperties: true
+    WeaverRunSource:
+      type: object
+      required:
+        - name
+        - ok
+      properties:
+        name:
+          type: string
+        ok:
+          type: boolean
+        error:
+          type: string
+    WeaverRunResponse:
+      type: object
+      required:
+        - output
+        - duration_ms
+        - sources
+      properties:
+        output:
+          type: object
+          additionalProperties: true
+        duration_ms:
+          type: integer
+          format: int64
+        sources:
+          type: array
+          items:
+            $ref: "#/components/schemas/WeaverRunSource"
     ValidationIssue:
       type: object
       required:

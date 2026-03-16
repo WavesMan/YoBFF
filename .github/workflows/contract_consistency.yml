@@ -1,0 +1,36 @@
+name: Contract Consistency
+
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+  push:
+    branches:
+      - main
+      - develop
+      - "feature/**"
+
+jobs:
+  contract-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24.0"
+
+      - name: Run Go vet
+        run: go vet ./...
+
+      - name: Run Go tests
+        run: go test ./...
+
+      - name: Contract consistency test
+        run: go test ./contracts/openapi -run TestAdminOpenAPIContractConsistency -v
+
+      - name: Weaver integration test
+        run: go test ./internal/admin -run TestWeaverDraftRoutes -v
