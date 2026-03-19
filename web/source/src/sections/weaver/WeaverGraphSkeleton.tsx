@@ -1,54 +1,96 @@
 import { FiLink2, FiPlus, FiTrash2 } from 'react-icons/fi'
-import type { WeaverDAG, WeaverDAGEdge, WeaverDAGNode } from '../../admin/types'
+import type { WeaverDAG, WeaverDAGEdge, WeaverDAGNode, WeaverNodeContract } from '../../admin/types'
 import { Button } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Input'
+import { Select } from '../../components/ui/Select'
 import './WeaverGraphSkeleton.css'
 
 type WeaverGraphSkeletonProps = {
   dag: WeaverDAG
+  nodeContracts?: WeaverNodeContract[]
   onChange: (dag: WeaverDAG) => void
 }
 
-/**
- *
- * WeaverGraphSkeleton 提供可视化编排阶段A骨架，用于节点与连线的基础编辑。
- *
- */
-export function WeaverGraphSkeleton({ dag, onChange }: WeaverGraphSkeletonProps) {
-  /**
-   *
-   * buildNodeId 生成唯一节点标识，用于新增节点时避免重复。
-   *
-   */
-  const buildNodeId = () => `node-${Date.now()}`
+function formatWeaverPorts(items?: string[]) {
+  if (!items || items.length === 0) {
+    return ''
+  }
+  return items.join(', ')
+}
 
-  /**
-   *
-   * addNode 新增一个默认节点，用于快速搭建编排骨架。
-   *
-   */
+function parseWeaverPorts(text: string) {
+  return text
+    .split(',')
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0)
+}
+
+export function WeaverGraphSkeleton({ dag, nodeContracts = [], onChange }: WeaverGraphSkeletonProps) {
+  const nodeList = dag.nodes || []
+  const edgeList = dag.edges || []
+
+  const buildNodeId = (prefix: string) => {
+    const safePrefix = prefix.trim() || 'node'
+    let sequence = nodeList.length + 1
+    let candidate = `${safePrefix}-${sequence}`
+    const exists = (nodeID: string) => nodeList.some((node) => node.id === nodeID)
+    while (exists(candidate)) {
+      sequence += 1
+      candidate = `${safePrefix}-${sequence}`
+    }
+    return candidate
+  }
+
+  const resolveNodeTemplate = (nodeType: string) => {
+    return nodeContracts.find((item) => item.type === nodeType)
+  }
+
+  const buildNodeTypeOptions = () => {
+    const catalogTypes = nodeContracts.map((item) => item.type)
+    const nodeTypes = nodeList.map((item) => item.type)
+    const merged = Array.from(new Set([...catalogTypes, ...nodeTypes].filter((item) => item.trim() !== '')))
+    if (merged.length === 0) {
+      return [
+        { label: 'transform', value: 'transform' },
+      ]
+    }
+    return merged.map((item) => ({
+      label: item,
+      value: item,
+    }))
+  }
+
+  const buildNodeIDOptions = () => {
+    if (nodeList.length === 0) {
+      return [
+        { label: '暂无节点', value: '', disabled: true },
+      ]
+    }
+    return nodeList.map((item) => ({
+      label: item.id,
+      value: item.id,
+    }))
+  }
+
   const addNode = () => {
+    const defaultType = nodeContracts[0]?.type || 'transform'
+    const template = resolveNodeTemplate(defaultType)
     const node: WeaverDAGNode = {
-      id: buildNodeId(),
-      type: 'transform',
-      inputs: [],
-      outputs: [],
+      id: buildNodeId(template?.type || defaultType),
+      type: template?.type || defaultType,
+      inputs: template?.inputs || [],
+      outputs: template?.outputs || [],
       config: {},
     }
     onChange({
       ...dag,
-      nodes: [...(dag.nodes || []), node],
+      nodes: [...nodeList, node],
     })
   }
 
-  /**
-   *
-   * removeNode 删除目标节点，并同步移除相关连线与输出节点引用。
-   *
-   */
   const removeNode = (nodeId: string) => {
-    const nextNodes = (dag.nodes || []).filter((item) => item.id !== nodeId)
-    const nextEdges = (dag.edges || []).filter((item) => item.from !== nodeId && item.to !== nodeId)
+    const nextNodes = nodeList.filter((item) => item.id !== nodeId)
+    const nextEdges = edgeList.filter((item) => item.from !== nodeId && item.to !== nodeId)
     const nextOutputNodeID = dag.output_node_id === nodeId ? '' : dag.output_node_id
     onChange({
       ...dag,
@@ -58,13 +100,8 @@ export function WeaverGraphSkeleton({ dag, onChange }: WeaverGraphSkeletonProps)
     })
   }
 
-  /**
-   *
-   * updateNode 更新节点字段，用于基础属性编辑。
-   *
-   */
   const updateNode = (nodeId: string, patch: Partial<WeaverDAGNode>) => {
-    const nextNodes = (dag.nodes || []).map((item) => {
+    const nextNodes = nodeList.map((item) => {
       if (item.id !== nodeId) {
         return item
       }
@@ -73,37 +110,42 @@ export function WeaverGraphSkeleton({ dag, onChange }: WeaverGraphSkeletonProps)
         ...patch,
       }
     })
+    const renamedNodeID = patch.id
+    if (typeof renamedNodeID !== 'string' || renamedNodeID === nodeId) {
+      onChange({
+        ...dag,
+        nodes: nextNodes,
+      })
+      return
+    }
+    const nextEdges = edgeList.map((item) => ({
+      from: item.from === nodeId ? renamedNodeID : item.from,
+      to: item.to === nodeId ? renamedNodeID : item.to,
+    }))
+    const nextOutputNodeID = dag.output_node_id === nodeId ? renamedNodeID : dag.output_node_id
     onChange({
       ...dag,
       nodes: nextNodes,
+      edges: nextEdges,
+      output_node_id: nextOutputNodeID,
     })
   }
 
-  /**
-   *
-   * addEdge 新增默认连线，用于建立节点依赖关系。
-   *
-   */
   const addEdge = () => {
-    const firstNode = dag.nodes?.[0]?.id || ''
-    const secondNode = dag.nodes?.[1]?.id || ''
+    const firstNode = nodeList[0]?.id || ''
+    const secondNode = nodeList[1]?.id || ''
     const edge: WeaverDAGEdge = {
       from: firstNode,
       to: secondNode,
     }
     onChange({
       ...dag,
-      edges: [...(dag.edges || []), edge],
+      edges: [...edgeList, edge],
     })
   }
 
-  /**
-   *
-   * updateEdge 更新连线字段，用于调整依赖方向。
-   *
-   */
   const updateEdge = (index: number, patch: Partial<WeaverDAGEdge>) => {
-    const nextEdges = (dag.edges || []).map((item, itemIndex) => {
+    const nextEdges = edgeList.map((item, itemIndex) => {
       if (itemIndex !== index) {
         return item
       }
@@ -118,28 +160,40 @@ export function WeaverGraphSkeleton({ dag, onChange }: WeaverGraphSkeletonProps)
     })
   }
 
-  /**
-   *
-   * removeEdge 删除目标连线，用于清理无效依赖关系。
-   *
-   */
   const removeEdge = (index: number) => {
-    const nextEdges = (dag.edges || []).filter((_, itemIndex) => itemIndex !== index)
+    const nextEdges = edgeList.filter((_, itemIndex) => itemIndex !== index)
     onChange({
       ...dag,
       edges: nextEdges,
     })
   }
 
+  const applyNodeTemplate = (nodeId: string, nodeType: string) => {
+    const template = resolveNodeTemplate(nodeType)
+    if (!template) {
+      updateNode(nodeId, { type: nodeType })
+      return
+    }
+    updateNode(nodeId, {
+      type: template.type,
+      inputs: template.inputs,
+      outputs: template.outputs,
+    })
+  }
+
+  const nodeTypeOptions = buildNodeTypeOptions()
+  const nodeIDOptions = buildNodeIDOptions()
+  const outputNodeValue = nodeList.some((item) => item.id === dag.output_node_id) ? (dag.output_node_id || '') : ''
+
   return (
     <div className="weaver-graph-card">
       <div className="weaver-graph-header">
-        <span className="weaver-graph-title">可视化编排（阶段A骨架）</span>
+        <span className="weaver-graph-title">可视化编排（M2编辑器）</span>
         <div className="weaver-graph-actions">
           <Button size="sm" variant="secondary" onClick={addNode}>
             <FiPlus className="mr-1" /> 添加节点
           </Button>
-          <Button size="sm" variant="secondary" onClick={addEdge} disabled={(dag.nodes || []).length < 2}>
+          <Button size="sm" variant="secondary" onClick={addEdge} disabled={nodeList.length < 2}>
             <FiLink2 className="mr-1" /> 添加连线
           </Button>
         </div>
@@ -148,21 +202,33 @@ export function WeaverGraphSkeleton({ dag, onChange }: WeaverGraphSkeletonProps)
       <div className="weaver-graph-body">
         <div className="weaver-graph-column">
           <div className="weaver-graph-subtitle">节点</div>
-          {(dag.nodes || []).length === 0 ? (
+          {nodeList.length === 0 ? (
             <div className="weaver-graph-empty">暂无节点，请先添加节点</div>
           ) : (
-            (dag.nodes || []).map((node) => (
-              <div key={node.id} className="weaver-graph-item">
+            nodeList.map((node) => (
+              <div key={node.id} className="weaver-graph-node-item">
                 <Input
                   value={node.id}
                   onChange={(event) => updateNode(node.id, { id: event.target.value })}
                   placeholder="节点ID"
                 />
-                <Input
+                <Select
+                  options={nodeTypeOptions}
                   value={node.type}
-                  onChange={(event) => updateNode(node.id, { type: event.target.value })}
-                  placeholder="节点类型"
+                  onChange={(event) => applyNodeTemplate(node.id, event.target.value)}
                 />
+                <div className="weaver-graph-row">
+                  <Input
+                    value={formatWeaverPorts(node.inputs)}
+                    onChange={(event) => updateNode(node.id, { inputs: parseWeaverPorts(event.target.value) })}
+                    placeholder="输入端口（逗号分隔）"
+                  />
+                  <Input
+                    value={formatWeaverPorts(node.outputs)}
+                    onChange={(event) => updateNode(node.id, { outputs: parseWeaverPorts(event.target.value) })}
+                    placeholder="输出端口（逗号分隔）"
+                  />
+                </div>
                 <Button size="sm" variant="danger" onClick={() => removeNode(node.id)}>
                   <FiTrash2 size={14} />
                 </Button>
@@ -173,20 +239,20 @@ export function WeaverGraphSkeleton({ dag, onChange }: WeaverGraphSkeletonProps)
 
         <div className="weaver-graph-column">
           <div className="weaver-graph-subtitle">连线</div>
-          {(dag.edges || []).length === 0 ? (
+          {edgeList.length === 0 ? (
             <div className="weaver-graph-empty">暂无连线，请先添加连线</div>
           ) : (
-            (dag.edges || []).map((edge, index) => (
+            edgeList.map((edge, index) => (
               <div key={`${edge.from}-${edge.to}-${index}`} className="weaver-graph-item">
-                <Input
+                <Select
+                  options={nodeIDOptions}
                   value={edge.from}
                   onChange={(event) => updateEdge(index, { from: event.target.value })}
-                  placeholder="from 节点ID"
                 />
-                <Input
+                <Select
+                  options={nodeIDOptions}
                   value={edge.to}
                   onChange={(event) => updateEdge(index, { to: event.target.value })}
-                  placeholder="to 节点ID"
                 />
                 <Button size="sm" variant="danger" onClick={() => removeEdge(index)}>
                   <FiTrash2 size={14} />
@@ -198,10 +264,13 @@ export function WeaverGraphSkeleton({ dag, onChange }: WeaverGraphSkeletonProps)
       </div>
 
       <div className="weaver-graph-footer">
-        <Input
-          value={dag.output_node_id || ''}
+        <Select
+          options={[
+            { label: '请选择输出节点（可选）', value: '' },
+            ...nodeIDOptions,
+          ]}
+          value={outputNodeValue}
           onChange={(event) => onChange({ ...dag, output_node_id: event.target.value })}
-          placeholder="输出节点ID（可选）"
         />
       </div>
     </div>

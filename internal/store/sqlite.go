@@ -177,6 +177,21 @@ func (s *Store) init() error {
 			operator TEXT,
 			source TEXT
 		);
+		CREATE TABLE IF NOT EXISTS weaver_run_history (
+			id TEXT PRIMARY KEY,
+			run_id TEXT NOT NULL,
+			scope TEXT NOT NULL,
+			target_id TEXT NOT NULL,
+			draft_id TEXT,
+			version_id TEXT,
+			status TEXT NOT NULL,
+			duration_ms INTEGER NOT NULL DEFAULT 0,
+			attempts_used INTEGER NOT NULL DEFAULT 0,
+			failures_json TEXT NOT NULL DEFAULT '[]',
+			retry_json TEXT NOT NULL DEFAULT '{}',
+			created_at TEXT NOT NULL,
+			operator TEXT
+		);
 		CREATE INDEX IF NOT EXISTS idx_config_versions_created_at ON config_versions(created_at DESC);
 		CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at DESC);
 		CREATE INDEX IF NOT EXISTS idx_sites_hostname ON sites(hostname);
@@ -192,6 +207,8 @@ func (s *Store) init() error {
 		CREATE INDEX IF NOT EXISTS idx_weaver_drafts_created_at ON weaver_drafts(created_at DESC);
 		CREATE INDEX IF NOT EXISTS idx_weaver_versions_draft_version ON weaver_versions(draft_id, version_no DESC);
 		CREATE INDEX IF NOT EXISTS idx_weaver_versions_created_at ON weaver_versions(created_at DESC);
+		CREATE INDEX IF NOT EXISTS idx_weaver_run_history_created_at ON weaver_run_history(created_at DESC);
+		CREATE INDEX IF NOT EXISTS idx_weaver_run_history_scope_target_time ON weaver_run_history(scope, target_id, created_at DESC);
 	`)
 	if err != nil {
 		return err

@@ -1777,6 +1777,75 @@ paths:
           $ref: "#/components/responses/RateLimited"
         "503":
           $ref: "#/components/responses/AuthUnavailable"
+  /api/v1/weaver/node-contracts:
+    get:
+      summary: 获取 Weaver 节点契约目录
+      description: 返回可用于编排编辑器选择的节点契约模板集合。
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/RequestID"
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/RateLimitLimit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/RateLimitRemaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/RateLimitReset"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WeaverNodeContractCatalogResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/AuthUnavailable"
+  /api/v1/weaver/drafts/{draft_id}/validate:
+    parameters:
+      - in: path
+        name: draft_id
+        schema:
+          type: string
+        required: true
+        description: 草稿标识
+    post:
+      summary: 校验 Weaver 草稿 DAG
+      description: 校验草稿 DAG 结构并返回拓扑冻结后的节点契约，可在请求体中覆盖 DAG。
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WeaverDraftValidateRequest"
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/RequestID"
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/RateLimitLimit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/RateLimitRemaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/RateLimitReset"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WeaverDraftValidateResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/WeaverDraftNotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/AuthUnavailable"
   /api/v1/weaver/drafts/{draft_id}/run:
     parameters:
       - in: path
@@ -1823,6 +1892,60 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/WeaverDraftNotFound"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/AuthUnavailable"
+  /api/v1/weaver/runs/stats:
+    get:
+      summary: 获取 Weaver 最近运行统计
+      description: 返回最近 N 次运行的错误码分组统计与趋势数据，用于策略效果观测。
+      parameters:
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 200
+            default: 20
+          required: false
+          description: 返回最近运行条数上限
+        - in: query
+          name: scope
+          schema:
+            type: string
+            enum:
+              - draft
+              - version
+          required: false
+          description: 统计维度，仅在与 target_id 同时提供时生效
+        - in: query
+          name: target_id
+          schema:
+            type: string
+          required: false
+          description: 维度目标ID，草稿或版本标识
+      responses:
+        "200":
+          description: OK
+          headers:
+            X-Request-ID:
+              $ref: "#/components/headers/RequestID"
+            X-RateLimit-Limit:
+              $ref: "#/components/headers/RateLimitLimit"
+            X-RateLimit-Remaining:
+              $ref: "#/components/headers/RateLimitRemaining"
+            X-RateLimit-Reset:
+              $ref: "#/components/headers/RateLimitReset"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WeaverRunStatsResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
         "429":
           $ref: "#/components/responses/RateLimited"
         "503":
@@ -2258,6 +2381,28 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/WeaverDraft"
+    WeaverDraftValidateRequest:
+      type: object
+      properties:
+        dag:
+          $ref: "#/components/schemas/WeaverDAG"
+    WeaverDraftValidateResponse:
+      type: object
+      required:
+        - status
+        - draft_id
+        - node_contracts
+      properties:
+        status:
+          type: string
+          enum:
+            - valid
+        draft_id:
+          type: string
+        node_contracts:
+          type: array
+          items:
+            $ref: "#/components/schemas/WeaverNodeContract"
     WeaverRunRequest:
       type: object
       properties:
@@ -2270,6 +2415,8 @@ components:
           additionalProperties: true
         dag:
           $ref: "#/components/schemas/WeaverDAG"
+        retry:
+          $ref: "#/components/schemas/WeaverRunRetryPolicy"
     WeaverRunSource:
       type: object
       required:
@@ -2280,15 +2427,189 @@ components:
           type: string
         ok:
           type: boolean
+        code:
+          type: string
         error:
           type: string
+    WeaverRunRetryPolicy:
+      type: object
+      properties:
+        max_attempts:
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 5
+        retry_on_node_error:
+          type: boolean
+        retry_on_source_error:
+          type: boolean
+        retryable_codes:
+          type: array
+          items:
+            type: string
+        backoff_initial_ms:
+          type: integer
+          format: int32
+          minimum: 0
+        backoff_multiplier:
+          type: number
+          format: double
+          minimum: 1
+        backoff_max_ms:
+          type: integer
+          format: int32
+          minimum: 0
+    WeaverRunRetrySnapshot:
+      type: object
+      required:
+        - max_attempts
+        - used
+        - triggered
+        - retryable_codes
+        - backoff_initial_ms
+        - backoff_multiplier
+        - backoff_max_ms
+        - delays_ms
+      properties:
+        max_attempts:
+          type: integer
+          format: int32
+        used:
+          type: integer
+          format: int32
+        triggered:
+          type: boolean
+        retryable_codes:
+          type: array
+          items:
+            type: string
+        backoff_initial_ms:
+          type: integer
+          format: int32
+        backoff_multiplier:
+          type: number
+          format: double
+        backoff_max_ms:
+          type: integer
+          format: int32
+        delays_ms:
+          type: array
+          items:
+            type: integer
+            format: int64
+    WeaverRunFailure:
+      type: object
+      required:
+        - scope
+        - code
+        - attempt
+        - error
+        - retryable
+      properties:
+        scope:
+          type: string
+          enum:
+            - source
+            - node
+            - dag
+        code:
+          type: string
+        node_id:
+          type: string
+        source:
+          type: string
+        attempt:
+          type: integer
+          format: int32
+        error:
+          type: string
+        retryable:
+          type: boolean
+    WeaverRunNodeExecution:
+      type: object
+      required:
+        - node_id
+        - node_type
+        - attempt
+        - status
+        - duration_ms
+        - input_keys
+        - parent_nodes
+        - output_keys
+      properties:
+        node_id:
+          type: string
+        node_type:
+          type: string
+        attempt:
+          type: integer
+          format: int32
+        status:
+          type: string
+          enum:
+            - succeeded
+            - failed
+        duration_ms:
+          type: integer
+          format: int64
+        input_keys:
+          type: array
+          items:
+            type: string
+        parent_nodes:
+          type: array
+          items:
+            type: string
+        output_keys:
+          type: array
+          items:
+            type: string
+        error:
+          type: string
+    WeaverRunAttempt:
+      type: object
+      required:
+        - attempt
+        - status
+        - duration_ms
+        - node_executions
+      properties:
+        attempt:
+          type: integer
+          format: int32
+        status:
+          type: string
+          enum:
+            - succeeded
+            - failed
+        duration_ms:
+          type: integer
+          format: int64
+        node_executions:
+          type: array
+          items:
+            $ref: "#/components/schemas/WeaverRunNodeExecution"
+        failure:
+          $ref: "#/components/schemas/WeaverRunFailure"
     WeaverRunResponse:
       type: object
       required:
+        - run_id
+        - status
         - output
         - duration_ms
         - sources
+        - attempts
+        - failures
+        - retry
       properties:
+        run_id:
+          type: string
+        status:
+          type: string
+          enum:
+            - succeeded
+            - failed
         output:
           type: object
           additionalProperties: true
@@ -2299,6 +2620,93 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/WeaverRunSource"
+        attempts:
+          type: array
+          items:
+            $ref: "#/components/schemas/WeaverRunAttempt"
+        failures:
+          type: array
+          items:
+            $ref: "#/components/schemas/WeaverRunFailure"
+        retry:
+          $ref: "#/components/schemas/WeaverRunRetrySnapshot"
+    WeaverRunErrorGroup:
+      type: object
+      required:
+        - code
+        - count
+      properties:
+        code:
+          type: string
+        count:
+          type: integer
+          format: int32
+    WeaverRunTrendPoint:
+      type: object
+      required:
+        - run_id
+        - created_at
+        - status
+        - duration_ms
+        - attempts_used
+        - error_codes
+      properties:
+        run_id:
+          type: string
+        created_at:
+          type: string
+        status:
+          type: string
+          enum:
+            - succeeded
+            - failed
+        duration_ms:
+          type: integer
+          format: int64
+        attempts_used:
+          type: integer
+          format: int32
+        error_codes:
+          type: array
+          items:
+            type: string
+    WeaverRunStatsResponse:
+      type: object
+      required:
+        - limit
+        - total_runs
+        - success_runs
+        - failed_runs
+        - error_groups
+        - trends
+      properties:
+        limit:
+          type: integer
+          format: int32
+        scope:
+          type: string
+          enum:
+            - draft
+            - version
+        target_id:
+          type: string
+        total_runs:
+          type: integer
+          format: int32
+        success_runs:
+          type: integer
+          format: int32
+        failed_runs:
+          type: integer
+          format: int32
+        error_groups:
+          type: array
+          items:
+            $ref: "#/components/schemas/WeaverRunErrorGroup"
+        trends:
+          type: array
+          items:
+            $ref: "#/components/schemas/WeaverRunTrendPoint"
     WeaverDeleteResponse:
       type: object
       required:
@@ -2378,6 +2786,15 @@ components:
           type: array
           items:
             type: string
+    WeaverNodeContractCatalogResponse:
+      type: object
+      required:
+        - items
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/WeaverNodeContract"
     WeaverVersion:
       type: object
       required:

@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"sort"
 	"strings"
 	"time"
 )
@@ -60,6 +61,234 @@ type WeaverVersion struct {
 	CreatedAt     string          `json:"created_at"`
 	Operator      string          `json:"operator,omitempty"`
 	Source        string          `json:"source,omitempty"`
+}
+
+type WeaverRunHistory struct {
+	RunID        string          `json:"run_id"`
+	Scope        string          `json:"scope"`
+	TargetID     string          `json:"target_id"`
+	DraftID      string          `json:"draft_id,omitempty"`
+	VersionID    string          `json:"version_id,omitempty"`
+	Status       string          `json:"status"`
+	DurationMs   int64           `json:"duration_ms"`
+	AttemptsUsed int             `json:"attempts_used"`
+	Failures     json.RawMessage `json:"failures"`
+	Retry        json.RawMessage `json:"retry"`
+	CreatedAt    string          `json:"created_at"`
+	Operator     string          `json:"operator,omitempty"`
+}
+
+type WeaverRunErrorCodeStat struct {
+	Code  string `json:"code"`
+	Count int    `json:"count"`
+}
+
+type WeaverRunTrendPoint struct {
+	RunID        string   `json:"run_id"`
+	CreatedAt    string   `json:"created_at"`
+	Status       string   `json:"status"`
+	DurationMs   int64    `json:"duration_ms"`
+	AttemptsUsed int      `json:"attempts_used"`
+	ErrorCodes   []string `json:"error_codes"`
+}
+
+type WeaverRunStats struct {
+	Limit       int                      `json:"limit"`
+	Scope       string                   `json:"scope,omitempty"`
+	TargetID    string                   `json:"target_id,omitempty"`
+	TotalRuns   int                      `json:"total_runs"`
+	SuccessRuns int                      `json:"success_runs"`
+	FailedRuns  int                      `json:"failed_runs"`
+	ErrorGroups []WeaverRunErrorCodeStat `json:"error_groups"`
+	Trends      []WeaverRunTrendPoint    `json:"trends"`
+}
+
+type weaverRunFailureRecord struct {
+	Code string `json:"code"`
+}
+
+// SaveWeaverRunHistory 保存单次 Weaver 运行历史，用于后续统计与趋势分析。
+// 参数：item 为运行记录快照，包含状态、耗时、失败明细与重试信息。
+// 返回：无。
+// 异常：数据库不可用、关键字段缺失或写入失败时返回错误。
+func (s *Store) SaveWeaverRunHistory(item WeaverRunHistory) error {
+	if s == nil || s.db == nil {
+		return errors.New("db not ready")
+	}
+	item.RunID = strings.TrimSpace(item.RunID)
+	item.Scope = strings.TrimSpace(item.Scope)
+	item.TargetID = strings.TrimSpace(item.TargetID)
+	item.Status = strings.TrimSpace(item.Status)
+	if item.RunID == "" {
+		return errors.New("run id is empty")
+	}
+	if item.Scope == "" {
+		return errors.New("scope is empty")
+	}
+	if item.TargetID == "" {
+		return errors.New("target id is empty")
+	}
+	if item.Status == "" {
+		return errors.New("status is empty")
+	}
+	if item.AttemptsUsed < 0 {
+		item.AttemptsUsed = 0
+	}
+	if item.DurationMs < 0 {
+		item.DurationMs = 0
+	}
+	item.Failures = normalizeJSONText(item.Failures, `[]`)
+	item.Retry = normalizeJSONText(item.Retry, `{}`)
+	item.CreatedAt = strings.TrimSpace(item.CreatedAt)
+	if item.CreatedAt == "" {
+		item.CreatedAt = time.Now().UTC().Format(time.RFC3339)
+	}
+	recordID, err := randomID()
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(
+		`INSERT INTO weaver_run_history
+		(id, run_id, scope, target_id, draft_id, version_id, status, duration_ms, attempts_used, failures_json, retry_json, created_at, operator)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		recordID,
+		item.RunID,
+		item.Scope,
+		item.TargetID,
+		strings.TrimSpace(item.DraftID),
+		strings.TrimSpace(item.VersionID),
+		item.Status,
+		item.DurationMs,
+		item.AttemptsUsed,
+		string(item.Failures),
+		string(item.Retry),
+		item.CreatedAt,
+		strings.TrimSpace(item.Operator),
+	)
+	return err
+}
+
+// ListWeaverRunStats 按最近 N 次运行生成错误码分组与趋势统计。
+// 参数：limit 为最近运行条数上限，scope 和 targetID 用于按草稿或版本过滤。
+// 返回：运行统计快照，包含分组计数与趋势点。
+// 异常：数据库不可用或查询失败时返回错误。
+func (s *Store) ListWeaverRunStats(limit int, scope string, targetID string) (WeaverRunStats, error) {
+	if s == nil || s.db == nil {
+		return WeaverRunStats{}, errors.New("db not ready")
+	}
+	if limit <= 0 {
+		limit = 20
+	}
+	if limit > 200 {
+		limit = 200
+	}
+	normalizedScope := strings.ToLower(strings.TrimSpace(scope))
+	normalizedTargetID := strings.TrimSpace(targetID)
+	queryText := `SELECT run_id, status, duration_ms, attempts_used, failures_json, created_at
+		FROM weaver_run_history`
+	queryArgs := make([]any, 0, 3)
+	if normalizedScope != "" || normalizedTargetID != "" {
+		if normalizedScope == "" || normalizedTargetID == "" {
+			return WeaverRunStats{}, errors.New("scope and target_id must be provided together")
+		}
+		queryText += ` WHERE scope = ? AND target_id = ?`
+		queryArgs = append(queryArgs, normalizedScope, normalizedTargetID)
+	}
+	queryText += ` ORDER BY created_at DESC LIMIT ?`
+	queryArgs = append(queryArgs, limit)
+	rows, err := s.db.Query(queryText, queryArgs...)
+	if err != nil {
+		return WeaverRunStats{}, err
+	}
+	defer func(rows *sql.Rows) {
+		_ = rows.Close()
+	}(rows)
+	trendDesc := make([]WeaverRunTrendPoint, 0, limit)
+	groupCounter := make(map[string]int)
+	successRuns := 0
+	failedRuns := 0
+	for rows.Next() {
+		var runID string
+		var status string
+		var durationMs int64
+		var attemptsUsed int
+		var failuresText string
+		var createdAt string
+		if scanErr := rows.Scan(&runID, &status, &durationMs, &attemptsUsed, &failuresText, &createdAt); scanErr != nil {
+			return WeaverRunStats{}, scanErr
+		}
+		errorCodes := make([]string, 0)
+		failures := make([]weaverRunFailureRecord, 0)
+		if unmarshalErr := json.Unmarshal([]byte(normalizeJSONStringValue(failuresText, `[]`)), &failures); unmarshalErr == nil {
+			for _, failure := range failures {
+				code := strings.ToLower(strings.TrimSpace(failure.Code))
+				if code == "" {
+					continue
+				}
+				groupCounter[code]++
+				if !slicesContainsString(errorCodes, code) {
+					errorCodes = append(errorCodes, code)
+				}
+			}
+		}
+		normalizedStatus := strings.TrimSpace(status)
+		if normalizedStatus == "succeeded" {
+			successRuns++
+		} else {
+			failedRuns++
+		}
+		trendDesc = append(trendDesc, WeaverRunTrendPoint{
+			RunID:        strings.TrimSpace(runID),
+			CreatedAt:    strings.TrimSpace(createdAt),
+			Status:       normalizedStatus,
+			DurationMs:   durationMs,
+			AttemptsUsed: attemptsUsed,
+			ErrorCodes:   errorCodes,
+		})
+	}
+	if err = rows.Err(); err != nil {
+		return WeaverRunStats{}, err
+	}
+	trends := make([]WeaverRunTrendPoint, len(trendDesc))
+	for idx := range trendDesc {
+		trends[len(trendDesc)-1-idx] = trendDesc[idx]
+	}
+	errorGroups := make([]WeaverRunErrorCodeStat, 0, len(groupCounter))
+	for code, count := range groupCounter {
+		errorGroups = append(errorGroups, WeaverRunErrorCodeStat{
+			Code:  code,
+			Count: count,
+		})
+	}
+	sort.Slice(errorGroups, func(left, right int) bool {
+		if errorGroups[left].Count == errorGroups[right].Count {
+			return errorGroups[left].Code < errorGroups[right].Code
+		}
+		return errorGroups[left].Count > errorGroups[right].Count
+	})
+	return WeaverRunStats{
+		Limit:       limit,
+		Scope:       normalizedScope,
+		TargetID:    normalizedTargetID,
+		TotalRuns:   len(trendDesc),
+		SuccessRuns: successRuns,
+		FailedRuns:  failedRuns,
+		ErrorGroups: errorGroups,
+		Trends:      trends,
+	}, nil
+}
+
+// slicesContainsString 判断字符串切片是否包含目标值。
+// 参数：items 为待检索切片，target 为目标值。
+// 返回：存在时为 true，否则为 false。
+// 异常：无。
+func slicesContainsString(items []string, target string) bool {
+	for _, item := range items {
+		if item == target {
+			return true
+		}
+	}
+	return false
 }
 
 // CreateWeaverDraft 新建可视化实验草稿，用于管理台实验区保存当前配置。

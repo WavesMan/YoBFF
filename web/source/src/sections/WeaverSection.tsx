@@ -5,14 +5,25 @@ import {
   deleteWeaverDraft,
   fetchWeaverDraft,
   fetchWeaverDrafts,
+  fetchWeaverNodeContracts,
   fetchWeaverDraftVersions,
   fetchWeaverVersion,
   publishWeaverDraft,
   runWeaverDraft,
+  fetchWeaverRunStats,
   runWeaverVersion,
-  updateWeaverDraft
+  updateWeaverDraft,
+  validateWeaverDraft
 } from '../admin/api'
-import type { WeaverDAG, WeaverDraft, WeaverRunResponse, WeaverVersion } from '../admin/types'
+import type {
+  WeaverDAG,
+  WeaverDraft,
+  WeaverNodeContract,
+  WeaverRunResponse,
+  WeaverRunRetryPolicy,
+  WeaverRunStatsResponse,
+  WeaverVersion
+} from '../admin/types'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
 import { useToast } from '../components/ui/Toast'
@@ -32,6 +43,18 @@ type DraftFormInput = {
   payloadText: string
 }
 
+type RunStatsScopeMode = 'all' | 'draft' | 'version'
+
+const defaultWeaverRunRetryPolicy: WeaverRunRetryPolicy = {
+  max_attempts: 3,
+  retry_on_node_error: true,
+  retry_on_source_error: false,
+  retryable_codes: ['node_attempt_guard', 'node_simulated_error'],
+  backoff_initial_ms: 150,
+  backoff_multiplier: 2,
+  backoff_max_ms: 1200,
+}
+
 /**
  *
  * 可视化实验室区域，用于编辑草稿、运行映射与查看结果。
@@ -48,6 +71,15 @@ export function WeaverSection({ token, operator }: WeaverSectionProps) {
   const [dagValue, setDagValue] = useState<WeaverDAG>(buildEmptyDag())
   const [mappingText, setMappingText] = useState('')
   const [runResult, setRunResult] = useState<WeaverRunResponse | null>(null)
+  const [dagJsonMode, setDagJsonMode] = useState<'visual' | 'advanced'>('visual')
+  const [dagText, setDagText] = useState(JSON.stringify(buildEmptyDag(), null, 2))
+  const [dagJsonError, setDagJsonError] = useState('')
+  const [retryPolicy, setRetryPolicy] = useState<WeaverRunRetryPolicy>(defaultWeaverRunRetryPolicy)
+  const [retryCodeText, setRetryCodeText] = useState((defaultWeaverRunRetryPolicy.retryable_codes || []).join(','))
+  const [nodeContractCatalog, setNodeContractCatalog] = useState<WeaverNodeContract[]>([])
+  const [validatedContracts, setValidatedContracts] = useState<WeaverNodeContract[]>([])
+  const [runStats, setRunStats] = useState<WeaverRunStatsResponse | null>(null)
+  const [runStatsScope, setRunStatsScope] = useState<RunStatsScopeMode>('all')
   const [selectedVersionDetail, setSelectedVersionDetail] = useState<WeaverVersion | null>(null)
   const [versionDetailError, setVersionDetailError] = useState('')
   const [loadingList, setLoadingList] = useState(false)
@@ -57,6 +89,8 @@ export function WeaverSection({ token, operator }: WeaverSectionProps) {
   const [publishingDraft, setPublishingDraft] = useState(false)
   const [runningDraft, setRunningDraft] = useState(false)
   const [runningVersion, setRunningVersion] = useState(false)
+  const [validatingDag, setValidatingDag] = useState(false)
+  const [loadingRunStats, setLoadingRunStats] = useState(false)
 
   /**
    *
@@ -112,6 +146,73 @@ export function WeaverSection({ token, operator }: WeaverSectionProps) {
 
   /**
    *
+   * 读取节点契约目录，用于辅助编排节点配置。
+   *
+   */
+  const loadNodeContractCatalog = useCallback(async () => {
+    if (!token) {
+      setNodeContractCatalog([])
+      return
+    }
+    try {
+      const response = await fetchWeaverNodeContracts(token)
+      setNodeContractCatalog(response.items || [])
+    } catch (error) {
+      toast.error(resolveWeaverRequestError(error, '读取节点契约目录失败'))
+      setNodeContractCatalog([])
+    }
+  }, [token, toast])
+
+  /**
+   *
+   * 读取最近运行统计，用于展示错误码分组与趋势变化。
+   *
+   */
+  const loadRunStats = useCallback(async (
+    scopeMode: RunStatsScopeMode,
+    currentDraftID: string | null,
+    currentVersionID: string | null
+  ) => {
+    if (!token) {
+      setRunStats(null)
+      return
+    }
+    let scope: 'draft' | 'version' | undefined
+    let targetID: string | undefined
+    if (scopeMode === 'draft') {
+      if (!currentDraftID) {
+        setRunStats(null)
+        return
+      }
+      scope = 'draft'
+      targetID = currentDraftID
+    }
+    if (scopeMode === 'version') {
+      if (!currentVersionID) {
+        setRunStats(null)
+        return
+      }
+      scope = 'version'
+      targetID = currentVersionID
+    }
+    setLoadingRunStats(true)
+    try {
+      const response = await fetchWeaverRunStats(token, {
+        limit: 20,
+        scope,
+        target_id: targetID,
+      })
+      setRunStats(response)
+    } catch (error) {
+      toast.error(resolveWeaverRequestError(error, '读取运行统计失败'))
+      setRunStats(null)
+    } finally {
+      setLoadingRunStats(false)
+    }
+  }, [token, toast])
+
+  /**
+   *
    * 将草稿信息填充到表单，用于继续编辑。
    *
    */
@@ -125,6 +226,8 @@ export function WeaverSection({ token, operator }: WeaverSectionProps) {
     }))
     setInputItems(inputs.length > 0 ? inputs : [])
     setDagValue(draft.dag ?? buildEmptyDag())
+    setDagText(JSON.stringify(draft.dag ?? buildEmptyDag(), null, 2))
+    setDagJsonError('')
     setMappingText(JSON.stringify(draft.mapping ?? {}, null, 2))
   }
 
@@ -144,6 +247,7 @@ export function WeaverSection({ token, operator }: WeaverSectionProps) {
       setSelectedVersionDetail(null)
       setVersionDetailError('')
       setRunResult(null)
+      setValidatedContracts([])
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '读取草稿失败')
     }
@@ -161,10 +265,13 @@ export function WeaverSection({ token, operator }: WeaverSectionProps) {
     setDraftName('')
     setInputItems([])
     setDagValue(buildEmptyDag())
+    setDagText(JSON.stringify(buildEmptyDag(), null, 2))
+    setDagJsonError('')
     setMappingText('')
     setSelectedVersionDetail(null)
     setVersionDetailError('')
     setRunResult(null)
+    setValidatedContracts([])
   }
 
   /**
@@ -253,6 +360,9 @@ export function WeaverSection({ token, operator }: WeaverSectionProps) {
     } catch {
       throw new Error('映射 JSON 解析失败')
     }
+    if (dagJsonError) {
+      throw new Error(dagJsonError)
+    }
     return {
       name: draftName.trim(),
       inputs: inputsPayload,
@@ -282,8 +392,22 @@ export function WeaverSection({ token, operator }: WeaverSectionProps) {
         payload: payloadValue as Record<string, unknown>,
       }
     })
+    const retryableCodes = retryCodeText
+      .split(',')
+      .map((item) => item.trim().toLowerCase())
+      .filter((item, index, list) => item.length > 0 && list.indexOf(item) === index)
+    const retryPayload: WeaverRunRetryPolicy = {
+      max_attempts: retryPolicy.max_attempts,
+      retry_on_node_error: retryPolicy.retry_on_node_error,
+      retry_on_source_error: retryPolicy.retry_on_source_error,
+      retryable_codes: retryableCodes,
+      backoff_initial_ms: retryPolicy.backoff_initial_ms,
+      backoff_multiplier: retryPolicy.backoff_multiplier,
+      backoff_max_ms: retryPolicy.backoff_max_ms,
+    }
     return {
       inputs: inputsPayload,
+      retry: retryPayload,
     }
   }
 
@@ -337,9 +461,20 @@ export function WeaverSection({ token, operator }: WeaverSectionProps) {
     setRunResult(null)
     try {
       const payload = buildDraftPayload()
-      const result = await runWeaverDraft(token, draftId, payload, operator)
+      const retryPayload = buildRunInputsPayload().retry
+      const result = await runWeaverDraft(
+        token,
+        draftId,
+        { ...payload, retry: retryPayload },
+        operator
+      )
       setRunResult(result)
-      toast.success('运行成功')
+      await loadRunStats(runStatsScope, draftId, selectedVersionId)
+      if (result.status === 'failed') {
+        toast.error(`运行失败，run_id=${result.run_id}`)
+      } else {
+        toast.success(`运行成功，run_id=${result.run_id}`)
+      }
     } catch (error) {
       toast.error(resolveWeaverRequestError(error, '运行失败'))
     } finally {
@@ -394,7 +529,12 @@ export function WeaverSection({ token, operator }: WeaverSectionProps) {
       const payload = buildRunInputsPayload()
       const result = await runWeaverVersion(token, selectedVersionId, payload, operator)
       setRunResult(result)
-      toast.success('版本运行成功')
+      await loadRunStats(runStatsScope, draftId, selectedVersionId)
+      if (result.status === 'failed') {
+        toast.error(`版本运行失败，run_id=${result.run_id}`)
+      } else {
+        toast.success(`版本运行成功，run_id=${result.run_id}`)
+      }
     } catch (error) {
       toast.error(resolveWeaverRequestError(error, '版本运行失败'))
     } finally {
@@ -402,9 +542,47 @@ export function WeaverSection({ token, operator }: WeaverSectionProps) {
     }
   }
 
+  /**
+   *
+   * 校验当前草稿DAG，用于发布前识别环路与输出节点配置问题。
+   *
+   */
+  const handleValidateDraft = async () => {
+    if (!token) {
+      toast.error('请先登录后再校验')
+      return
+    }
+    if (!draftId) {
+      toast.error('请先保存草稿')
+      return
+    }
+    setValidatingDag(true)
+    try {
+      const result = await validateWeaverDraft(token, draftId, { dag: dagValue as Record<string, unknown> })
+      setValidatedContracts(result.node_contracts || [])
+      toast.success('DAG校验通过')
+    } catch (error) {
+      setValidatedContracts([])
+      toast.error(resolveWeaverRequestError(error, 'DAG校验失败'))
+    } finally {
+      setValidatingDag(false)
+    }
+  }
+
   useEffect(() => {
     loadDraftList()
-  }, [loadDraftList])
+    loadNodeContractCatalog()
+  }, [loadDraftList, loadNodeContractCatalog])
+
+  useEffect(() => {
+    loadRunStats(runStatsScope, draftId, selectedVersionId)
+  }, [loadRunStats, runStatsScope, draftId, selectedVersionId])
+
+  useEffect(() => {
+    setDagText(JSON.stringify(dagValue, null, 2))
+    setDagJsonError('')
+    setValidatedContracts([])
+  }, [dagValue])
 
   /**
    *
@@ -444,6 +622,9 @@ export function WeaverSection({ token, operator }: WeaverSectionProps) {
       cancelled = true
     }
   }, [token, selectedVersionId])
+
+  const statsScopeLabel = runStatsScope === 'draft' ? '当前草稿' : runStatsScope === 'version' ? '当前版本' : '全局'
+  const statsScopeMissing = (runStatsScope === 'draft' && !draftId) || (runStatsScope === 'version' && !selectedVersionId)
 
   return (
     <div className="weaver-container">
@@ -533,6 +714,13 @@ export function WeaverSection({ token, operator }: WeaverSectionProps) {
             >
               <FiGitBranch className="mr-1" /> {publishingDraft ? '发布中...' : '发布'}
             </Button>
+            <Button
+              variant="secondary"
+              onClick={handleValidateDraft}
+              disabled={!draftId || validatingDag || savingDraft || runningDraft || runningVersion}
+            >
+              <FiGitBranch className="mr-1" /> {validatingDag ? '校验中...' : '校验DAG'}
+            </Button>
             <Button onClick={handleRunDraft} disabled={runningDraft}>
               <FiPlay className="mr-1" /> {runningDraft ? '运行中...' : '运行'}
             </Button>
@@ -596,7 +784,53 @@ export function WeaverSection({ token, operator }: WeaverSectionProps) {
 
             {/* 右半部分：映射规则与结果 */}
             <div className="flex flex-col gap-4">
-              <WeaverGraphSkeleton dag={dagValue} onChange={setDagValue} />
+              <div className="weaver-editor-mode-bar">
+                <div className="weaver-form-section-title mb-0">
+                  <span>DAG 编排</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant={dagJsonMode === 'visual' ? 'primary' : 'secondary'}
+                    onClick={() => setDagJsonMode('visual')}
+                  >
+                    可视化模式
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={dagJsonMode === 'advanced' ? 'primary' : 'secondary'}
+                    onClick={() => setDagJsonMode('advanced')}
+                  >
+                    高级 JSON
+                  </Button>
+                </div>
+              </div>
+              {dagJsonMode === 'visual' ? (
+                <WeaverGraphSkeleton dag={dagValue} nodeContracts={nodeContractCatalog} onChange={setDagValue} />
+              ) : (
+                <div className="flex flex-col gap-2">
+                  <CodeEditor
+                    label="DAG Configuration"
+                    value={dagText}
+                    onChange={(val) => {
+                      const nextText = val || ''
+                      setDagText(nextText)
+                      try {
+                        const nextValue = JSON.parse(nextText) as WeaverDAG
+                        setDagValue(nextValue)
+                        setDagJsonError('')
+                      } catch {
+                        setDagJsonError('DAG JSON 解析失败')
+                      }
+                    }}
+                    language="json"
+                    height={260}
+                  />
+                  {dagJsonError && (
+                    <div className="p-3 rounded text-sm bg-error-dim">{dagJsonError}</div>
+                  )}
+                </div>
+              )}
               <div className="flex flex-col">
                 <div className="weaver-form-section-title">
                   <span>映射规则 (Mapping)</span>
@@ -609,6 +843,242 @@ export function WeaverSection({ token, operator }: WeaverSectionProps) {
                   height="100%"
                   className="flex-1 min-h-[300px]"
                 />
+              </div>
+              <div className="weaver-retry-panel">
+                <div className="weaver-form-section-title">
+                  <span>重试策略配置</span>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <Input
+                    label="最大尝试次数"
+                    type="number"
+                    min={1}
+                    max={5}
+                    value={String(retryPolicy.max_attempts ?? 3)}
+                    onChange={(event) => setRetryPolicy((prev) => ({
+                      ...prev,
+                      max_attempts: Number(event.target.value) || 1,
+                    }))}
+                  />
+                  <Input
+                    label="初始退避(ms)"
+                    type="number"
+                    min={0}
+                    value={String(retryPolicy.backoff_initial_ms ?? 0)}
+                    onChange={(event) => setRetryPolicy((prev) => ({
+                      ...prev,
+                      backoff_initial_ms: Number(event.target.value) || 0,
+                    }))}
+                  />
+                  <Input
+                    label="退避倍率"
+                    type="number"
+                    min={1}
+                    step="0.1"
+                    value={String(retryPolicy.backoff_multiplier ?? 2)}
+                    onChange={(event) => setRetryPolicy((prev) => ({
+                      ...prev,
+                      backoff_multiplier: Number(event.target.value) || 1,
+                    }))}
+                  />
+                  <Input
+                    label="最大退避(ms)"
+                    type="number"
+                    min={0}
+                    value={String(retryPolicy.backoff_max_ms ?? 0)}
+                    onChange={(event) => setRetryPolicy((prev) => ({
+                      ...prev,
+                      backoff_max_ms: Number(event.target.value) || 0,
+                    }))}
+                  />
+                  <Input
+                    label="重试错误码(逗号分隔)"
+                    value={retryCodeText}
+                    onChange={(event) => setRetryCodeText(event.target.value)}
+                    className="md:col-span-2"
+                  />
+                </div>
+                <div className="mt-3 flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant={retryPolicy.retry_on_node_error ? 'primary' : 'secondary'}
+                    onClick={() => setRetryPolicy((prev) => ({
+                      ...prev,
+                      retry_on_node_error: !prev.retry_on_node_error,
+                    }))}
+                  >
+                    节点错误重试
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={retryPolicy.retry_on_source_error ? 'primary' : 'secondary'}
+                    onClick={() => setRetryPolicy((prev) => ({
+                      ...prev,
+                      retry_on_source_error: !prev.retry_on_source_error,
+                    }))}
+                  >
+                    输入错误重试
+                  </Button>
+                </div>
+              </div>
+              <div className="weaver-result-panel flex flex-col">
+                <div className="weaver-form-section-title">
+                  <FiBox className="mr-2" /> 节点契约目录
+                </div>
+                {dagJsonMode === 'visual' ? (
+                  <div className="weaver-contract-list">
+                    {nodeContractCatalog.length === 0 ? (
+                      <div className="p-3 rounded text-sm bg-placeholder">暂无节点契约目录</div>
+                    ) : (
+                      nodeContractCatalog.map((contract) => (
+                        <div key={contract.node_id} className="weaver-contract-card">
+                          <div className="weaver-contract-head">
+                            <span>{contract.node_id}</span>
+                            <span>{contract.type}</span>
+                          </div>
+                          <div className="weaver-contract-meta">
+                            <span>inputs: {contract.inputs.join(', ') || '无'}</span>
+                            <span>outputs: {contract.outputs.join(', ') || '无'}</span>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                ) : (
+                  <CodeEditor
+                    label="Node Contract Catalog"
+                    value={JSON.stringify(nodeContractCatalog, null, 2)}
+                    language="json"
+                    readOnly={true}
+                    height={180}
+                  />
+                )}
+              </div>
+              <div className="weaver-result-panel flex flex-col">
+                <div className="weaver-form-section-title">
+                  <FiBox className="mr-2" /> DAG校验结果
+                </div>
+                {dagJsonMode === 'visual' ? (
+                  <div className="weaver-contract-list">
+                    {validatedContracts.length === 0 ? (
+                      <div className="p-3 rounded text-sm bg-placeholder">暂无校验契约，请先执行 DAG 校验</div>
+                    ) : (
+                      validatedContracts.map((contract) => (
+                        <div key={`${contract.node_id}-${contract.type}`} className="weaver-contract-card">
+                          <div className="weaver-contract-head">
+                            <span>{contract.node_id}</span>
+                            <span>{contract.type}</span>
+                          </div>
+                          <div className="weaver-contract-meta">
+                            <span>inputs: {contract.inputs.join(', ') || '无'}</span>
+                            <span>outputs: {contract.outputs.join(', ') || '无'}</span>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                ) : (
+                  <CodeEditor
+                    label="Validated Node Contracts"
+                    value={JSON.stringify(validatedContracts, null, 2)}
+                    language="json"
+                    readOnly={true}
+                    height={180}
+                  />
+                )}
+              </div>
+              <div className="weaver-result-panel">
+                <div className="weaver-form-section-title">
+                  <FiBox className="mr-2" /> 运行统计
+                  <div className="weaver-stats-switch">
+                    <Button
+                      size="sm"
+                      variant={runStatsScope === 'all' ? 'primary' : 'secondary'}
+                      onClick={() => setRunStatsScope('all')}
+                    >
+                      全局
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={runStatsScope === 'draft' ? 'primary' : 'secondary'}
+                      disabled={!draftId}
+                      onClick={() => setRunStatsScope('draft')}
+                    >
+                      草稿
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={runStatsScope === 'version' ? 'primary' : 'secondary'}
+                      disabled={!selectedVersionId}
+                      onClick={() => setRunStatsScope('version')}
+                    >
+                      版本
+                    </Button>
+                  </div>
+                </div>
+                {loadingRunStats ? (
+                  <div className="p-4 rounded text-sm bg-placeholder">运行统计加载中...</div>
+                ) : statsScopeMissing ? (
+                  <div className="p-4 rounded text-sm bg-placeholder">
+                    {runStatsScope === 'draft' ? '请先选择草稿后查看草稿统计' : '请先选择版本后查看版本统计'}
+                  </div>
+                ) : !runStats || runStats.total_runs === 0 ? (
+                  <div className="p-4 rounded text-sm bg-placeholder">暂无运行统计数据</div>
+                ) : (
+                  <div className="weaver-stats-panel">
+                    <div className="weaver-stats-scope">统计维度：{statsScopeLabel}</div>
+                    <div className="weaver-stats-summary">
+                      <div className="weaver-stats-card">
+                        <div className="weaver-stats-label">最近样本</div>
+                        <div className="weaver-stats-value">{runStats.total_runs}</div>
+                      </div>
+                      <div className="weaver-stats-card">
+                        <div className="weaver-stats-label">成功次数</div>
+                        <div className="weaver-stats-value">{runStats.success_runs}</div>
+                      </div>
+                      <div className="weaver-stats-card">
+                        <div className="weaver-stats-label">失败次数</div>
+                        <div className="weaver-stats-value">{runStats.failed_runs}</div>
+                      </div>
+                    </div>
+                    <div className="weaver-error-groups">
+                      {(runStats.error_groups || []).slice(0, 8).map((group) => (
+                        <div key={group.code} className="weaver-error-chip">
+                          <span className="weaver-error-code">{group.code}</span>
+                          <span className="weaver-error-count">{group.count}</span>
+                        </div>
+                      ))}
+                      {(runStats.error_groups || []).length === 0 && (
+                        <div className="text-secondary text-sm">最近样本未产生失败错误码</div>
+                      )}
+                    </div>
+                    <div className="weaver-trend-list">
+                      {(runStats.trends || []).map((point, index) => {
+                        const durationRatio = Math.min(100, Math.round((point.duration_ms / 3000) * 100))
+                        const rowClass = point.status === 'failed' ? 'weaver-trend-row failed' : 'weaver-trend-row'
+                        return (
+                          <div key={point.run_id} className={rowClass}>
+                            <div className="weaver-trend-head">
+                              <span>#{index + 1}</span>
+                              <span>{point.status}</span>
+                              <span>{point.duration_ms}ms</span>
+                            </div>
+                            <div className="weaver-trend-bar">
+                              <div
+                                className="weaver-trend-fill"
+                                style={{ width: `${Math.max(durationRatio, 3)}%` }}
+                              />
+                            </div>
+                            <div className="weaver-trend-meta">
+                              <span>attempts={point.attempts_used}</span>
+                              <span>{point.error_codes.join(', ') || '无错误码'}</span>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
               {selectedVersionId && (
                 <div className="weaver-result-panel flex flex-col">
@@ -635,9 +1105,23 @@ export function WeaverSection({ token, operator }: WeaverSectionProps) {
 
               {runResult && (
                 <div className="weaver-result-panel flex flex-col flex-1">
-                  <div className="weaver-form-section-title text-success">
+                  <div className={`weaver-form-section-title ${runResult.status === 'failed' ? 'text-danger' : 'text-success'}`}>
                     <FiBox className="mr-2" /> 运行结果
                   </div>
+                  <CodeEditor
+                    label="Run Observability"
+                    value={JSON.stringify({
+                      run_id: runResult.run_id,
+                      status: runResult.status,
+                      duration_ms: runResult.duration_ms,
+                      retry: runResult.retry,
+                      failures: runResult.failures,
+                      attempts: runResult.attempts,
+                    }, null, 2)}
+                    language="json"
+                    readOnly={true}
+                    height={220}
+                  />
                   <CodeEditor
                     label="Result Output"
                     value={JSON.stringify(runResult.output, null, 2)}
@@ -653,6 +1137,18 @@ export function WeaverSection({ token, operator }: WeaverSectionProps) {
                         {runResult.sources.filter(s => !s.ok).map((source, i) => (
                           <li key={i}>
                             <span className="font-semibold">{source.name}:</span> {source.error}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {runResult.failures.length > 0 && (
+                    <div className="mt-4 p-4 rounded text-sm bg-error-dim">
+                      <h4 className="font-bold mb-2">失败定位:</h4>
+                      <ul className="list-disc pl-5">
+                        {runResult.failures.map((item, index) => (
+                          <li key={`${item.scope}-${index}`}>
+                            {`attempt=${item.attempt} scope=${item.scope} code=${item.code}${item.node_id ? ` node=${item.node_id}` : ''}${item.source ? ` source=${item.source}` : ''} error=${item.error}`}
                           </li>
                         ))}
                       </ul>

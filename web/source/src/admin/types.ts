@@ -346,13 +346,95 @@ export type WeaverDraftListResponse = {
 export type WeaverRunSource = {
   name: string
   ok: boolean
+  code?: string
   error?: string
 }
 
+export type WeaverRunNodeExecution = {
+  node_id: string
+  node_type: string
+  attempt: number
+  status: 'succeeded' | 'failed'
+  duration_ms: number
+  input_keys: string[]
+  parent_nodes: string[]
+  output_keys: string[]
+  error?: string
+}
+
+export type WeaverRunFailure = {
+  scope: 'source' | 'node' | 'dag'
+  code: string
+  node_id?: string
+  source?: string
+  attempt: number
+  error: string
+  retryable: boolean
+}
+
+export type WeaverRunAttempt = {
+  attempt: number
+  status: 'succeeded' | 'failed'
+  duration_ms: number
+  node_executions: WeaverRunNodeExecution[]
+  failure?: WeaverRunFailure
+}
+
+export type WeaverRunRetrySnapshot = {
+  max_attempts: number
+  used: number
+  triggered: boolean
+  retryable_codes: string[]
+  backoff_initial_ms: number
+  backoff_multiplier: number
+  backoff_max_ms: number
+  delays_ms: number[]
+}
+
+export type WeaverRunRetryPolicy = {
+  max_attempts?: number
+  retry_on_node_error?: boolean
+  retry_on_source_error?: boolean
+  retryable_codes?: string[]
+  backoff_initial_ms?: number
+  backoff_multiplier?: number
+  backoff_max_ms?: number
+}
+
 export type WeaverRunResponse = {
+  run_id: string
+  status: 'succeeded' | 'failed'
   output: unknown
   duration_ms: number
   sources: WeaverRunSource[]
+  attempts: WeaverRunAttempt[]
+  failures: WeaverRunFailure[]
+  retry: WeaverRunRetrySnapshot
+}
+
+export type WeaverRunErrorGroup = {
+  code: string
+  count: number
+}
+
+export type WeaverRunTrendPoint = {
+  run_id: string
+  created_at: string
+  status: 'succeeded' | 'failed'
+  duration_ms: number
+  attempts_used: number
+  error_codes: string[]
+}
+
+export type WeaverRunStatsResponse = {
+  limit: number
+  scope?: 'draft' | 'version'
+  target_id?: string
+  total_runs: number
+  success_runs: number
+  failed_runs: number
+  error_groups: WeaverRunErrorGroup[]
+  trends: WeaverRunTrendPoint[]
 }
 
 export type WeaverDeleteResponse = {
@@ -384,6 +466,16 @@ export type WeaverNodeContract = {
   type: string
   inputs: string[]
   outputs: string[]
+}
+
+export type WeaverNodeContractCatalogResponse = {
+  items: WeaverNodeContract[]
+}
+
+export type WeaverDraftValidateResponse = {
+  status: 'valid'
+  draft_id: string
+  node_contracts: WeaverNodeContract[]
 }
 
 export type WeaverVersion = {

@@ -29,9 +29,13 @@ import type {
   SiteCDNOriginStatusListResponse,
   SSLCertificate,
   WeaverDraft,
+  WeaverDraftValidateResponse,
   WeaverDeleteResponse,
   WeaverDraftListResponse,
+  WeaverNodeContractCatalogResponse,
+  WeaverRunRetryPolicy,
   WeaverRunResponse,
+  WeaverRunStatsResponse,
   WeaverVersion,
   WeaverVersionListResponse,
 } from './types'
@@ -381,7 +385,12 @@ export async function updateWeaverDraft(
 export async function runWeaverDraft(
   token: string,
   draftId: string,
-  payload: { inputs?: unknown[]; mapping?: Record<string, unknown> },
+  payload: {
+    inputs?: unknown[]
+    mapping?: Record<string, unknown>
+    dag?: Record<string, unknown>
+    retry?: WeaverRunRetryPolicy
+  },
   operator: string
 ) {
   return apiRequest<WeaverRunResponse>(`${API_BASE}/weaver/drafts/${encodeURIComponent(draftId)}/run`, {
@@ -417,6 +426,31 @@ export async function publishWeaverDraft(token: string, draftId: string, operato
 
 /**
  *
+ * 拉取 Weaver 节点契约目录，用于编排编辑器节点选择提示。
+ *
+ */
+export async function fetchWeaverNodeContracts(token: string) {
+  return apiRequest<WeaverNodeContractCatalogResponse>(`${API_BASE}/weaver/node-contracts`, {}, token)
+}
+
+/**
+ *
+ * 校验草稿 DAG 结构并返回冻结契约，用于发布前预检。
+ *
+ */
+export async function validateWeaverDraft(
+  token: string,
+  draftId: string,
+  payload: { dag?: Record<string, unknown> }
+) {
+  return apiRequest<WeaverDraftValidateResponse>(`${API_BASE}/weaver/drafts/${encodeURIComponent(draftId)}/validate`, {
+    method: 'POST',
+    body: JSON.stringify(payload ?? {}),
+  }, token)
+}
+
+/**
+ *
  * 读取草稿下的版本列表，用于版本选择与回放运行。
  *
  */
@@ -441,7 +475,10 @@ export async function fetchWeaverVersion(token: string, versionId: string) {
 export async function runWeaverVersion(
   token: string,
   versionId: string,
-  payload: { inputs?: unknown[] },
+  payload: {
+    inputs?: unknown[]
+    retry?: WeaverRunRetryPolicy
+  },
   operator: string
 ) {
   return apiRequest<WeaverRunResponse>(`${API_BASE}/weaver/versions/${encodeURIComponent(versionId)}/run`, {
@@ -449,6 +486,30 @@ export async function runWeaverVersion(
     body: JSON.stringify(payload ?? {}),
     headers: { 'X-Operator': operator },
   }, token)
+}
+
+/**
+ *
+ * 读取最近 N 次运行统计，用于错误码分组与趋势可视化。
+ *
+ */
+export async function fetchWeaverRunStats(
+  token: string,
+  options?: {
+    limit?: number
+    scope?: 'draft' | 'version'
+    target_id?: string
+  }
+) {
+  const query = new URLSearchParams()
+  query.set('limit', String(options?.limit ?? 20))
+  if (options?.scope) {
+    query.set('scope', options.scope)
+  }
+  if (options?.target_id) {
+    query.set('target_id', options.target_id)
+  }
+  return apiRequest<WeaverRunStatsResponse>(`${API_BASE}/weaver/runs/stats?${query.toString()}`, {}, token)
 }
 
 export async function fetchSiteCDNOriginStatus(token: string, id: string) {

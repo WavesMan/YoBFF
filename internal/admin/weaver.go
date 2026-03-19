@@ -3,8 +3,11 @@ package admin
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
+	"math"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -27,18 +30,87 @@ type weaverRunPayload struct {
 	Inputs  []weaverInputPayload `json:"inputs"`
 	Mapping json.RawMessage      `json:"mapping"`
 	DAG     json.RawMessage      `json:"dag"`
+	Retry   weaverRunRetryPolicy `json:"retry"`
+}
+
+type weaverDraftValidatePayload struct {
+	DAG json.RawMessage `json:"dag"`
 }
 
 type weaverRunSource struct {
 	Name  string `json:"name"`
 	Ok    bool   `json:"ok"`
+	Code  string `json:"code,omitempty"`
 	Error string `json:"error,omitempty"`
 }
 
 type weaverRunResponse struct {
-	Output     any               `json:"output"`
-	DurationMs int64             `json:"duration_ms"`
-	Sources    []weaverRunSource `json:"sources"`
+	RunID      string                 `json:"run_id"`
+	Status     string                 `json:"status"`
+	Output     any                    `json:"output"`
+	DurationMs int64                  `json:"duration_ms"`
+	Sources    []weaverRunSource      `json:"sources"`
+	Attempts   []weaverRunAttempt     `json:"attempts"`
+	Failures   []weaverRunFailure     `json:"failures"`
+	Retry      weaverRunRetrySnapshot `json:"retry"`
+}
+
+type weaverRunRetryPolicy struct {
+	MaxAttempts        int      `json:"max_attempts"`
+	RetryOnNodeError   bool     `json:"retry_on_node_error"`
+	RetryOnSourceError bool     `json:"retry_on_source_error"`
+	RetryableCodes     []string `json:"retryable_codes"`
+	BackoffInitialMs   int      `json:"backoff_initial_ms"`
+	BackoffMultiplier  float64  `json:"backoff_multiplier"`
+	BackoffMaxMs       int      `json:"backoff_max_ms"`
+}
+
+type weaverRunRetrySnapshot struct {
+	MaxAttempts       int      `json:"max_attempts"`
+	Used              int      `json:"used"`
+	Triggered         bool     `json:"triggered"`
+	RetryableCodes    []string `json:"retryable_codes"`
+	BackoffInitialMs  int      `json:"backoff_initial_ms"`
+	BackoffMultiplier float64  `json:"backoff_multiplier"`
+	BackoffMaxMs      int      `json:"backoff_max_ms"`
+	DelaysMs          []int64  `json:"delays_ms"`
+}
+
+type weaverRunFailure struct {
+	Scope     string `json:"scope"`
+	Code      string `json:"code"`
+	NodeID    string `json:"node_id,omitempty"`
+	Source    string `json:"source,omitempty"`
+	Attempt   int    `json:"attempt"`
+	Error     string `json:"error"`
+	Retryable bool   `json:"retryable"`
+}
+
+type weaverRunNodeExecution struct {
+	NodeID      string   `json:"node_id"`
+	NodeType    string   `json:"node_type"`
+	Attempt     int      `json:"attempt"`
+	Status      string   `json:"status"`
+	DurationMs  int64    `json:"duration_ms"`
+	InputKeys   []string `json:"input_keys"`
+	ParentNodes []string `json:"parent_nodes"`
+	OutputKeys  []string `json:"output_keys"`
+	Error       string   `json:"error,omitempty"`
+}
+
+type weaverRunAttempt struct {
+	Attempt        int                      `json:"attempt"`
+	Status         string                   `json:"status"`
+	DurationMs     int64                    `json:"duration_ms"`
+	NodeExecutions []weaverRunNodeExecution `json:"node_executions"`
+	Failure        *weaverRunFailure        `json:"failure,omitempty"`
+}
+
+type weaverRunResult struct {
+	Output         map[string]any
+	AttemptOutputs []weaverRunAttempt
+	Failures       []weaverRunFailure
+	DelaysMs       []int64
 }
 
 // weaverDrafts 提供 Weaver 草稿的列表与创建能力。
@@ -106,6 +178,10 @@ func (s *Server) weaverDraftRouter(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(parts) == 2 && parts[1] == "versions" {
 		s.weaverDraftVersions(w, r, draftID)
+		return
+	}
+	if len(parts) == 2 && parts[1] == "validate" {
+		s.validateWeaverDraft(w, r, draftID)
 		return
 	}
 	writeError(w, http.StatusNotFound, "not_found", "not found", r)
@@ -234,18 +310,37 @@ func (s *Server) runWeaverDraft(w http.ResponseWriter, r *http.Request, draftID 
 		writeError(w, http.StatusBadRequest, "weaver_run_failed", err.Error(), r)
 		return
 	}
-	output, err := executeWeaverRun(inputs, mapping, dag)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "weaver_run_failed", err.Error(), r)
-		return
-	}
+	runID := newRequestID()
+	runResult := executeWeaverRunWithRetry(inputs, mapping, dag, sources, payload.Retry)
+	status := inferRunStatus(runResult.AttemptOutputs)
+	durationMs := time.Since(startedAt).Milliseconds()
+	retrySnapshot := buildRunRetrySnapshot(payload.Retry, len(runResult.AttemptOutputs), runResult.DelaysMs)
+	_ = s.persistWeaverRunHistory(store.WeaverRunHistory{
+		RunID:        runID,
+		Scope:        "draft",
+		TargetID:     draftID,
+		DraftID:      draftID,
+		Status:       status,
+		DurationMs:   durationMs,
+		AttemptsUsed: len(runResult.AttemptOutputs),
+		Failures:     mustMarshalJSON(runResult.Failures, `[]`),
+		Retry:        mustMarshalJSON(retrySnapshot, `{}`),
+		CreatedAt:    time.Now().UTC().Format(time.RFC3339),
+		Operator:     operatorFromRequest(r),
+	})
 	_ = s.store.SaveAudit("weaver_run", draftID, operatorFromRequest(r), map[string]any{
 		"name": draft.Name,
+		"run":  runID,
 	})
 	writeJSON(w, http.StatusOK, weaverRunResponse{
-		Output:     output,
-		DurationMs: time.Since(startedAt).Milliseconds(),
+		RunID:      runID,
+		Status:     status,
+		Output:     runResult.Output,
+		DurationMs: durationMs,
 		Sources:    sources,
+		Attempts:   runResult.AttemptOutputs,
+		Failures:   runResult.Failures,
+		Retry:      retrySnapshot,
 	})
 }
 
@@ -273,6 +368,96 @@ func (s *Server) publishWeaverDraft(w http.ResponseWriter, r *http.Request, draf
 		"version":    version.Version,
 	})
 	writeJSON(w, http.StatusOK, version)
+}
+
+// weaverNodeContracts 返回 Weaver 节点契约目录。
+func (s *Server) weaverNodeContracts(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed", r)
+		return
+	}
+	if s.store == nil {
+		writeError(w, http.StatusServiceUnavailable, "store_unavailable", "weaver store unavailable", r)
+		return
+	}
+	items := s.store.ListWeaverNodeContractCatalog()
+	writeJSON(w, http.StatusOK, map[string]any{
+		"items": items,
+	})
+}
+
+// weaverRunStats 返回最近 N 次 Weaver 运行的错误码分组与趋势统计，支持按草稿或版本过滤。
+func (s *Server) weaverRunStats(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed", r)
+		return
+	}
+	if s.store == nil {
+		writeError(w, http.StatusServiceUnavailable, "store_unavailable", "weaver store unavailable", r)
+		return
+	}
+	limit := parsePositiveInt(r.URL.Query().Get("limit"), 20)
+	scope := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("scope")))
+	targetID := strings.TrimSpace(r.URL.Query().Get("target_id"))
+	if (scope == "" && targetID != "") || (scope != "" && targetID == "") {
+		writeError(w, http.StatusBadRequest, "invalid_request", "scope and target_id must be provided together", r)
+		return
+	}
+	if scope != "" && scope != "draft" && scope != "version" {
+		writeError(w, http.StatusBadRequest, "invalid_request", "scope must be draft or version", r)
+		return
+	}
+	stats, err := s.store.ListWeaverRunStats(limit, scope, targetID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "weaver_run_stats_failed", err.Error(), r)
+		return
+	}
+	writeJSON(w, http.StatusOK, stats)
+}
+
+// validateWeaverDraft 校验草稿 DAG 并返回冻结后的节点契约。
+func (s *Server) validateWeaverDraft(w http.ResponseWriter, r *http.Request, draftID string) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method_not_allowed", "method not allowed", r)
+		return
+	}
+	if s.store == nil {
+		writeError(w, http.StatusServiceUnavailable, "store_unavailable", "weaver store unavailable", r)
+		return
+	}
+	payload, err := decodeOptionalWeaverValidatePayload(w, r)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", err.Error(), r)
+		return
+	}
+	draft, err := s.store.GetWeaverDraft(draftID)
+	if err != nil {
+		if errors.Is(err, store.ErrWeaverDraftNotFound) {
+			writeError(w, http.StatusNotFound, "draft_not_found", "weaver draft not found", r)
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "weaver_query_failed", err.Error(), r)
+		return
+	}
+	dagRaw := draft.DAG
+	if payload != nil && len(payload.DAG) > 0 {
+		dagRaw = payload.DAG
+	}
+	dag, err := parseOptionalWeaverDAG(dagRaw)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "weaver_invalid_dag", err.Error(), r)
+		return
+	}
+	contracts, err := s.store.ValidateWeaverDAG(dag)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "weaver_invalid_dag", err.Error(), r)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"status":         "valid",
+		"draft_id":       draftID,
+		"node_contracts": contracts,
+	})
 }
 
 // weaverDraftVersions 返回指定草稿的版本列表。
@@ -348,20 +533,57 @@ func (s *Server) runWeaverVersion(w http.ResponseWriter, r *http.Request, versio
 		writeError(w, http.StatusBadRequest, "weaver_run_failed", err.Error(), r)
 		return
 	}
-	output, err := executeWeaverRun(inputs, mapping, dag)
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "weaver_run_failed", err.Error(), r)
-		return
-	}
+	runID := newRequestID()
+	runResult := executeWeaverRunWithRetry(inputs, mapping, dag, sources, payload.Retry)
+	status := inferRunStatus(runResult.AttemptOutputs)
+	durationMs := time.Since(startedAt).Milliseconds()
+	retrySnapshot := buildRunRetrySnapshot(payload.Retry, len(runResult.AttemptOutputs), runResult.DelaysMs)
+	_ = s.persistWeaverRunHistory(store.WeaverRunHistory{
+		RunID:        runID,
+		Scope:        "version",
+		TargetID:     versionID,
+		DraftID:      item.DraftID,
+		VersionID:    versionID,
+		Status:       status,
+		DurationMs:   durationMs,
+		AttemptsUsed: len(runResult.AttemptOutputs),
+		Failures:     mustMarshalJSON(runResult.Failures, `[]`),
+		Retry:        mustMarshalJSON(retrySnapshot, `{}`),
+		CreatedAt:    time.Now().UTC().Format(time.RFC3339),
+		Operator:     operatorFromRequest(r),
+	})
 	_ = s.store.SaveAudit("weaver_version_run", versionID, operatorFromRequest(r), map[string]any{
 		"draft_id": item.DraftID,
 		"version":  item.Version,
+		"run":      runID,
 	})
 	writeJSON(w, http.StatusOK, weaverRunResponse{
-		Output:     output,
-		DurationMs: time.Since(startedAt).Milliseconds(),
+		RunID:      runID,
+		Status:     status,
+		Output:     runResult.Output,
+		DurationMs: durationMs,
 		Sources:    sources,
+		Attempts:   runResult.AttemptOutputs,
+		Failures:   runResult.Failures,
+		Retry:      retrySnapshot,
 	})
+}
+
+// persistWeaverRunHistory 写入 Weaver 运行历史，供统计接口查询。
+func (s *Server) persistWeaverRunHistory(item store.WeaverRunHistory) error {
+	if s == nil || s.store == nil {
+		return errors.New("store unavailable")
+	}
+	return s.store.SaveWeaverRunHistory(item)
+}
+
+// mustMarshalJSON 序列化任意值，失败时返回默认 JSON 文本。
+func mustMarshalJSON(value any, fallback string) json.RawMessage {
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return json.RawMessage(fallback)
+	}
+	return encoded
 }
 
 // decodeWeaverDraftPayload 解析草稿写请求并转换为存储层对象。
@@ -404,9 +626,26 @@ func decodeWeaverDraftPayload(w http.ResponseWriter, r *http.Request) (store.Wea
 // decodeOptionalWeaverRunPayload 解析可选运行请求体。
 func decodeOptionalWeaverRunPayload(w http.ResponseWriter, r *http.Request) (*weaverRunPayload, error) {
 	if r.ContentLength == 0 {
-		return nil, nil
+		return &weaverRunPayload{}, nil
 	}
 	var payload weaverRunPayload
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 2<<20))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&payload); err != nil {
+		if err == io.EOF {
+			return &weaverRunPayload{}, nil
+		}
+		return nil, err
+	}
+	return &payload, nil
+}
+
+// decodeOptionalWeaverValidatePayload 解析可选草稿校验请求体。
+func decodeOptionalWeaverValidatePayload(w http.ResponseWriter, r *http.Request) (*weaverDraftValidatePayload, error) {
+	if r.ContentLength == 0 {
+		return nil, nil
+	}
+	var payload weaverDraftValidatePayload
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 2<<20))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&payload); err != nil {
@@ -503,6 +742,7 @@ func buildWeaverInputMap(inputs []weaverInputPayload) (map[string]any, []weaverR
 			sources = append(sources, weaverRunSource{
 				Name:  name,
 				Ok:    false,
+				Code:  "source_payload_empty",
 				Error: "payload is empty",
 			})
 			continue
@@ -511,6 +751,7 @@ func buildWeaverInputMap(inputs []weaverInputPayload) (map[string]any, []weaverR
 			sources = append(sources, weaverRunSource{
 				Name:  name,
 				Ok:    false,
+				Code:  "source_payload_invalid",
 				Error: "payload is invalid",
 			})
 			continue
@@ -538,33 +779,107 @@ func parseOptionalWeaverDAG(raw json.RawMessage) (store.WeaverDAG, error) {
 }
 
 // executeWeaverRun 根据运行输入、映射与 DAG 生成最小可执行结果。
-func executeWeaverRun(inputs map[string]any, mapping any, dag store.WeaverDAG) (map[string]any, error) {
+func executeWeaverRunWithRetry(
+	inputs map[string]any,
+	mapping any,
+	dag store.WeaverDAG,
+	sources []weaverRunSource,
+	retryPolicy weaverRunRetryPolicy,
+) weaverRunResult {
+	policy := normalizeRunRetryPolicy(retryPolicy)
+	attempts := make([]weaverRunAttempt, 0, policy.MaxAttempts)
+	failures := make([]weaverRunFailure, 0, 1)
+	delays := make([]int64, 0, policy.MaxAttempts-1)
+	for attempt := 1; attempt <= policy.MaxAttempts; attempt++ {
+		runStartedAt := time.Now()
+		output, executions, failure := executeWeaverRun(inputs, mapping, dag, sources, attempt)
+		attemptItem := weaverRunAttempt{
+			Attempt:        attempt,
+			Status:         "succeeded",
+			DurationMs:     time.Since(runStartedAt).Milliseconds(),
+			NodeExecutions: executions,
+		}
+		if failure == nil {
+			attempts = append(attempts, attemptItem)
+			return weaverRunResult{
+				Output:         output,
+				AttemptOutputs: attempts,
+				Failures:       failures,
+				DelaysMs:       delays,
+			}
+		}
+		attemptItem.Status = "failed"
+		attemptItem.Failure = failure
+		attempts = append(attempts, attemptItem)
+		failures = append(failures, *failure)
+		if !shouldRetryRun(*failure, policy, attempt) {
+			break
+		}
+		delay := buildBackoffDelayMs(policy, attempt)
+		delays = append(delays, delay)
+		if delay > 0 {
+			time.Sleep(time.Duration(delay) * time.Millisecond)
+		}
+	}
+	return weaverRunResult{
+		Output: map[string]any{
+			"inputs":  inputs,
+			"mapping": mapping,
+		},
+		AttemptOutputs: attempts,
+		Failures:       failures,
+		DelaysMs:       delays,
+	}
+}
+
+func executeWeaverRun(
+	inputs map[string]any,
+	mapping any,
+	dag store.WeaverDAG,
+	sources []weaverRunSource,
+	attempt int,
+) (map[string]any, []weaverRunNodeExecution, *weaverRunFailure) {
+	sourcesFailure := buildSourceFailure(sources, attempt)
+	if sourcesFailure != nil {
+		return nil, nil, sourcesFailure
+	}
 	if len(dag.Nodes) == 0 {
 		return map[string]any{
 			"inputs":  inputs,
 			"mapping": mapping,
-		}, nil
+		}, nil, nil
 	}
-	nodeResults, finalOutput, err := executeWeaverDAG(dag, inputs)
-	if err != nil {
-		return nil, err
+	nodeResults, finalOutput, executions, failure := executeWeaverDAG(dag, inputs, attempt)
+	if failure != nil {
+		return nil, executions, failure
 	}
 	return map[string]any{
 		"inputs":      inputs,
 		"mapping":     mapping,
 		"dag_output":  finalOutput,
 		"node_result": nodeResults,
-	}, nil
+	}, executions, nil
 }
 
-// executeWeaverDAG 执行 DAG 的最小执行语义并返回节点输出与最终输出。
-func executeWeaverDAG(dag store.WeaverDAG, inputs map[string]any) (map[string]any, any, error) {
+func executeWeaverDAG(
+	dag store.WeaverDAG,
+	inputs map[string]any,
+	attempt int,
+) (map[string]any, any, []weaverRunNodeExecution, *weaverRunFailure) {
 	orderedNodes, dependencyMap, err := topologicalWeaverNodes(dag)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, &weaverRunFailure{
+			Scope:     "dag",
+			Code:      classifyDAGErrorCode(err),
+			Attempt:   attempt,
+			Error:     err.Error(),
+			Retryable: false,
+		}
 	}
 	nodeOutputs := make(map[string]any, len(orderedNodes))
+	executions := make([]weaverRunNodeExecution, 0, len(orderedNodes))
 	for _, node := range orderedNodes {
+		nodeStartedAt := time.Now()
 		dependencyOutput := make(map[string]any)
 		for _, parent := range dependencyMap[node.ID] {
 			dependencyOutput[parent] = nodeOutputs[parent]
@@ -579,6 +894,27 @@ func executeWeaverDAG(dag store.WeaverDAG, inputs map[string]any) (map[string]an
 		if len(node.Config) > 0 {
 			_ = json.Unmarshal(node.Config, &config)
 		}
+		if failureCode, failureText, shouldFail := evaluateNodeFailure(node.ID, config, attempt); shouldFail {
+			executions = append(executions, weaverRunNodeExecution{
+				NodeID:      node.ID,
+				NodeType:    node.Type,
+				Attempt:     attempt,
+				Status:      "failed",
+				DurationMs:  time.Since(nodeStartedAt).Milliseconds(),
+				InputKeys:   mapKeys(nodeInput),
+				ParentNodes: dependencyMap[node.ID],
+				OutputKeys:  node.Outputs,
+				Error:       failureText,
+			})
+			return nil, nil, executions, &weaverRunFailure{
+				Scope:     "node",
+				Code:      failureCode,
+				NodeID:    node.ID,
+				Attempt:   attempt,
+				Error:     failureText,
+				Retryable: true,
+			}
+		}
 		nodeOutputs[node.ID] = map[string]any{
 			"id":      node.ID,
 			"type":    node.Type,
@@ -587,6 +923,16 @@ func executeWeaverDAG(dag store.WeaverDAG, inputs map[string]any) (map[string]an
 			"config":  config,
 			"outputs": node.Outputs,
 		}
+		executions = append(executions, weaverRunNodeExecution{
+			NodeID:      node.ID,
+			NodeType:    node.Type,
+			Attempt:     attempt,
+			Status:      "succeeded",
+			DurationMs:  time.Since(nodeStartedAt).Milliseconds(),
+			InputKeys:   mapKeys(nodeInput),
+			ParentNodes: dependencyMap[node.ID],
+			OutputKeys:  node.Outputs,
+		})
 	}
 	finalNodeID := strings.TrimSpace(dag.OutputNodeID)
 	if finalNodeID == "" {
@@ -594,9 +940,16 @@ func executeWeaverDAG(dag store.WeaverDAG, inputs map[string]any) (map[string]an
 	}
 	finalOutput, ok := nodeOutputs[finalNodeID]
 	if !ok {
-		return nil, nil, errors.New("dag.output_node_id not found")
+		return nil, nil, executions, &weaverRunFailure{
+			Scope:     "dag",
+			Code:      "dag_output_node_not_found",
+			NodeID:    finalNodeID,
+			Attempt:   attempt,
+			Error:     "dag.output_node_id not found",
+			Retryable: false,
+		}
 	}
-	return nodeOutputs, finalOutput, nil
+	return nodeOutputs, finalOutput, executions, nil
 }
 
 // topologicalWeaverNodes 计算 DAG 拓扑序并返回依赖关系映射。
@@ -682,4 +1035,212 @@ func errMissingField(field string) error {
 // errDuplicateField 构造重复字段错误。
 func errDuplicateField(field string) error {
 	return requestFieldError{field: field + " is duplicated"}
+}
+
+func normalizeRunRetryPolicy(policy weaverRunRetryPolicy) weaverRunRetryPolicy {
+	maxAttempts := policy.MaxAttempts
+	if maxAttempts <= 0 {
+		maxAttempts = 1
+	}
+	if maxAttempts > 5 {
+		maxAttempts = 5
+	}
+	backoffInitial := policy.BackoffInitialMs
+	if backoffInitial < 0 {
+		backoffInitial = 0
+	}
+	backoffMultiplier := policy.BackoffMultiplier
+	if backoffMultiplier < 1 {
+		backoffMultiplier = 2
+	}
+	backoffMax := policy.BackoffMaxMs
+	if backoffMax < backoffInitial {
+		backoffMax = backoffInitial
+	}
+	retryableCodes := normalizeRetryableCodes(policy.RetryableCodes)
+	return weaverRunRetryPolicy{
+		MaxAttempts:        maxAttempts,
+		RetryOnNodeError:   policy.RetryOnNodeError,
+		RetryOnSourceError: policy.RetryOnSourceError,
+		RetryableCodes:     retryableCodes,
+		BackoffInitialMs:   backoffInitial,
+		BackoffMultiplier:  backoffMultiplier,
+		BackoffMaxMs:       backoffMax,
+	}
+}
+
+func buildRunRetrySnapshot(policy weaverRunRetryPolicy, used int, delays []int64) weaverRunRetrySnapshot {
+	normalized := normalizeRunRetryPolicy(policy)
+	return weaverRunRetrySnapshot{
+		MaxAttempts:       normalized.MaxAttempts,
+		Used:              used,
+		Triggered:         used > 1,
+		RetryableCodes:    normalized.RetryableCodes,
+		BackoffInitialMs:  normalized.BackoffInitialMs,
+		BackoffMultiplier: normalized.BackoffMultiplier,
+		BackoffMaxMs:      normalized.BackoffMaxMs,
+		DelaysMs:          delays,
+	}
+}
+
+func shouldRetryRun(failure weaverRunFailure, policy weaverRunRetryPolicy, attempt int) bool {
+	if attempt >= policy.MaxAttempts {
+		return false
+	}
+	if !failure.Retryable {
+		return false
+	}
+	if len(policy.RetryableCodes) > 0 {
+		return slices.Contains(policy.RetryableCodes, strings.ToLower(strings.TrimSpace(failure.Code)))
+	}
+	if failure.Scope == "node" && policy.RetryOnNodeError {
+		return true
+	}
+	if failure.Scope == "source" && policy.RetryOnSourceError {
+		return true
+	}
+	return false
+}
+
+func buildSourceFailure(sources []weaverRunSource, attempt int) *weaverRunFailure {
+	for _, item := range sources {
+		if item.Ok {
+			continue
+		}
+		return &weaverRunFailure{
+			Scope:     "source",
+			Code:      sourceFailureCode(item),
+			Source:    item.Name,
+			Attempt:   attempt,
+			Error:     item.Error,
+			Retryable: true,
+		}
+	}
+	return nil
+}
+
+func evaluateNodeFailure(nodeID string, config map[string]any, attempt int) (string, string, bool) {
+	rawText, hasText := config["simulate_error"]
+	if hasText {
+		if failureText, ok := rawText.(string); ok && strings.TrimSpace(failureText) != "" {
+			return "node_simulated_error", failureText, true
+		}
+	}
+	failUntilText, hasFailUntil := config["fail_until_attempt"]
+	if !hasFailUntil {
+		return "", "", false
+	}
+	failUntil, ok := numberToInt(failUntilText)
+	if !ok || failUntil <= 0 {
+		return "", "", false
+	}
+	if attempt > failUntil {
+		return "", "", false
+	}
+	return "node_attempt_guard", fmt.Sprintf("node %s simulated failure at attempt %d", nodeID, attempt), true
+}
+
+func numberToInt(value any) (int, bool) {
+	switch typed := value.(type) {
+	case int:
+		return typed, true
+	case int8:
+		return int(typed), true
+	case int16:
+		return int(typed), true
+	case int32:
+		return int(typed), true
+	case int64:
+		return int(typed), true
+	case float32:
+		return int(typed), true
+	case float64:
+		return int(typed), true
+	case json.Number:
+		parsed, err := typed.Int64()
+		if err != nil {
+			return 0, false
+		}
+		return int(parsed), true
+	default:
+		return 0, false
+	}
+}
+
+func mapKeys(items map[string]any) []string {
+	keys := make([]string, 0, len(items))
+	for key := range items {
+		keys = append(keys, key)
+	}
+	return keys
+}
+
+func inferRunStatus(attempts []weaverRunAttempt) string {
+	if len(attempts) == 0 {
+		return "failed"
+	}
+	lastAttempt := attempts[len(attempts)-1]
+	if lastAttempt.Status == "succeeded" {
+		return "succeeded"
+	}
+	return "failed"
+}
+
+func sourceFailureCode(source weaverRunSource) string {
+	code := strings.ToLower(strings.TrimSpace(source.Code))
+	if code != "" {
+		return code
+	}
+	return "source_invalid"
+}
+
+func normalizeRetryableCodes(codes []string) []string {
+	used := make(map[string]struct{}, len(codes))
+	items := make([]string, 0, len(codes))
+	for _, code := range codes {
+		normalized := strings.ToLower(strings.TrimSpace(code))
+		if normalized == "" {
+			continue
+		}
+		if _, exists := used[normalized]; exists {
+			continue
+		}
+		used[normalized] = struct{}{}
+		items = append(items, normalized)
+	}
+	return items
+}
+
+func buildBackoffDelayMs(policy weaverRunRetryPolicy, attempt int) int64 {
+	if policy.BackoffInitialMs <= 0 {
+		return 0
+	}
+	delay := float64(policy.BackoffInitialMs)
+	for idx := 1; idx < attempt; idx++ {
+		delay *= policy.BackoffMultiplier
+	}
+	if policy.BackoffMaxMs > 0 && delay > float64(policy.BackoffMaxMs) {
+		delay = float64(policy.BackoffMaxMs)
+	}
+	if delay < 0 {
+		return 0
+	}
+	return int64(math.Round(delay))
+}
+
+func classifyDAGErrorCode(err error) string {
+	if err == nil {
+		return "dag_execute_failed"
+	}
+	msg := strings.ToLower(strings.TrimSpace(err.Error()))
+	if msg == "dag has cycle" {
+		return "dag_cycle"
+	}
+	if strings.Contains(msg, "node not found") {
+		return "dag_edge_node_not_found"
+	}
+	if strings.Contains(msg, "is required") || strings.Contains(msg, "is duplicated") || strings.Contains(msg, " is empty") {
+		return "dag_schema_invalid"
+	}
+	return "dag_execute_failed"
 }
