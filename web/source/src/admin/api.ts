@@ -32,6 +32,8 @@ import type {
   WeaverDeleteResponse,
   WeaverDraftListResponse,
   WeaverRunResponse,
+  WeaverVersion,
+  WeaverVersionListResponse,
 } from './types'
 
 const API_BASE = '/admin/api/v1'
@@ -397,6 +399,54 @@ export async function runWeaverDraft(
 export async function deleteWeaverDraft(token: string, draftId: string, operator: string) {
   return apiRequest<WeaverDeleteResponse>(`${API_BASE}/weaver/drafts/${encodeURIComponent(draftId)}`, {
     method: 'DELETE',
+    headers: { 'X-Operator': operator },
+  }, token)
+}
+
+/**
+ *
+ * 发布草稿为版本，用于冻结当前可运行快照。
+ *
+ */
+export async function publishWeaverDraft(token: string, draftId: string, operator: string) {
+  return apiRequest<WeaverVersion>(`${API_BASE}/weaver/drafts/${encodeURIComponent(draftId)}/publish`, {
+    method: 'POST',
+    headers: { 'X-Operator': operator },
+  }, token)
+}
+
+/**
+ *
+ * 读取草稿下的版本列表，用于版本选择与回放运行。
+ *
+ */
+export async function fetchWeaverDraftVersions(token: string, draftId: string, limit = 20) {
+  return apiRequest<WeaverVersionListResponse>(`${API_BASE}/weaver/drafts/${encodeURIComponent(draftId)}/versions?limit=${limit}`, {}, token)
+}
+
+/**
+ *
+ * 读取指定版本详情，用于展示冻结输入、映射与DAG。
+ *
+ */
+export async function fetchWeaverVersion(token: string, versionId: string) {
+  return apiRequest<WeaverVersion>(`${API_BASE}/weaver/versions/${encodeURIComponent(versionId)}`, {}, token)
+}
+
+/**
+ *
+ * 运行指定版本，用于验证版本快照执行结果。
+ *
+ */
+export async function runWeaverVersion(
+  token: string,
+  versionId: string,
+  payload: { inputs?: unknown[] },
+  operator: string
+) {
+  return apiRequest<WeaverRunResponse>(`${API_BASE}/weaver/versions/${encodeURIComponent(versionId)}/run`, {
+    method: 'POST',
+    body: JSON.stringify(payload ?? {}),
     headers: { 'X-Operator': operator },
   }, token)
 }

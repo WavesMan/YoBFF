@@ -1,0 +1,64 @@
+.weaver-graph-card {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 1rem;
+  background-color: var(--bg-surface);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.weaver-graph-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.weaver-graph-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.weaver-graph-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.weaver-graph-body {
+  display: grid;
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.weaver-graph-column {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.weaver-graph-subtitle {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.weaver-graph-item {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.weaver-graph-empty {
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+}
+
+@media (min-width: 1024px) {
+  .weaver-graph-body {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

@@ -333,6 +333,7 @@ export type WeaverDraft = {
   name: string
   inputs: WeaverInput[]
   mapping: Record<string, unknown>
+  dag?: WeaverDAG
   created_at: string
   updated_at: string
   operator?: string
@@ -357,4 +358,48 @@ export type WeaverRunResponse = {
 export type WeaverDeleteResponse = {
   status: 'deleted'
   id: string
+}
+
+export type WeaverDAGNode = {
+  id: string
+  type: string
+  inputs?: string[]
+  outputs?: string[]
+  config?: Record<string, unknown>
+}
+
+export type WeaverDAGEdge = {
+  from: string
+  to: string
+}
+
+export type WeaverDAG = {
+  nodes: WeaverDAGNode[]
+  edges: WeaverDAGEdge[]
+  output_node_id?: string
+}
+
+export type WeaverNodeContract = {
+  node_id: string
+  type: string
+  inputs: string[]
+  outputs: string[]
+}
+
+export type WeaverVersion = {
+  id: string
+  draft_id: string
+  version: number
+  name: string
+  inputs: WeaverInput[]
+  mapping: Record<string, unknown>
+  dag: WeaverDAG
+  node_contracts: WeaverNodeContract[]
+  created_at: string
+  operator?: string
+  source?: string
+}
+
+export type WeaverVersionListResponse = {
+  items: WeaverVersion[]
 }

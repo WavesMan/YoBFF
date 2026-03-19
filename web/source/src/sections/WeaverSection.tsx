@@ -1,11 +1,24 @@
 import { useCallback, useEffect, useState } from 'react'
-import { FiLayers, FiPlay, FiSave, FiPlus, FiTrash2, FiBox } from 'react-icons/fi'
-import { createWeaverDraft, deleteWeaverDraft, fetchWeaverDraft, fetchWeaverDrafts, runWeaverDraft, updateWeaverDraft } from '../admin/api'
-import type { WeaverDraft, WeaverRunResponse } from '../admin/types'
+import { FiLayers, FiPlay, FiSave, FiPlus, FiTrash2, FiBox, FiGitBranch } from 'react-icons/fi'
+import {
+  createWeaverDraft,
+  deleteWeaverDraft,
+  fetchWeaverDraft,
+  fetchWeaverDrafts,
+  fetchWeaverDraftVersions,
+  fetchWeaverVersion,
+  publishWeaverDraft,
+  runWeaverDraft,
+  runWeaverVersion,
+  updateWeaverDraft
+} from '../admin/api'
+import type { WeaverDAG, WeaverDraft, WeaverRunResponse, WeaverVersion } from '../admin/types'
 import { Button } from '../components/ui/Button'
 import { Input } from '../components/ui/Input'
 import { useToast } from '../components/ui/Toast'
 import { CodeEditor } from '../components/ui/CodeEditor'
+import { WeaverGraphSkeleton } from './weaver/WeaverGraphSkeleton'
+import { buildEmptyDag, buildVersionSnapshot, resolveWeaverRequestError } from './weaver/utils'
 import './WeaverSection.css'
 
 type WeaverSectionProps = {
@@ -27,14 +40,23 @@ type DraftFormInput = {
 export function WeaverSection({ token, operator }: WeaverSectionProps) {
   const toast = useToast()
   const [draftList, setDraftList] = useState<WeaverDraft[]>([])
+  const [versionList, setVersionList] = useState<WeaverVersion[]>([])
   const [draftId, setDraftId] = useState<string | null>(null)
+  const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null)
   const [draftName, setDraftName] = useState('')
   const [inputItems, setInputItems] = useState<DraftFormInput[]>([])
+  const [dagValue, setDagValue] = useState<WeaverDAG>(buildEmptyDag())
   const [mappingText, setMappingText] = useState('')
   const [runResult, setRunResult] = useState<WeaverRunResponse | null>(null)
+  const [selectedVersionDetail, setSelectedVersionDetail] = useState<WeaverVersion | null>(null)
+  const [versionDetailError, setVersionDetailError] = useState('')
   const [loadingList, setLoadingList] = useState(false)
+  const [loadingVersions, setLoadingVersions] = useState(false)
+  const [loadingVersionDetail, setLoadingVersionDetail] = useState(false)
   const [savingDraft, setSavingDraft] = useState(false)
+  const [publishingDraft, setPublishingDraft] = useState(false)
   const [runningDraft, setRunningDraft] = useState(false)
+  const [runningVersion, setRunningVersion] = useState(false)
 
   /**
    *
@@ -59,6 +81,37 @@ export function WeaverSection({ token, operator }: WeaverSectionProps) {
 
   /**
    *
+   * 读取草稿下的版本列表，用于选择与运行发布版本。
+   *
+   */
+  const loadVersionList = useCallback(async (targetDraftId: string) => {
+    if (!token || !targetDraftId) {
+      setVersionList([])
+      setSelectedVersionId(null)
+      return
+    }
+    setLoadingVersions(true)
+    try {
+      const response = await fetchWeaverDraftVersions(token, targetDraftId, 20)
+      const items = response.items || []
+      setVersionList(items)
+      setSelectedVersionId((prev) => {
+        if (prev && items.some((item) => item.id === prev)) {
+          return prev
+        }
+        return items.length > 0 ? items[0].id : null
+      })
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '读取版本列表失败')
+      setVersionList([])
+      setSelectedVersionId(null)
+    } finally {
+      setLoadingVersions(false)
+    }
+  }, [token, toast])
+
+  /**
+   *
    * 将草稿信息填充到表单，用于继续编辑。
    *
    */
@@ -71,6 +124,7 @@ export function WeaverSection({ token, operator }: WeaverSectionProps) {
       payloadText: JSON.stringify(item.payload ?? {}, null, 2),
     }))
     setInputItems(inputs.length > 0 ? inputs : [])
+    setDagValue(draft.dag ?? buildEmptyDag())
     setMappingText(JSON.stringify(draft.mapping ?? {}, null, 2))
   }
 
@@ -86,6 +140,9 @@ export function WeaverSection({ token, operator }: WeaverSectionProps) {
     try {
       const draft = await fetchWeaverDraft(token, targetId)
       applyDraftToForm(draft)
+      await loadVersionList(draft.id)
+      setSelectedVersionDetail(null)
+      setVersionDetailError('')
       setRunResult(null)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : '读取草稿失败')
@@ -99,9 +156,14 @@ export function WeaverSection({ token, operator }: WeaverSectionProps) {
    */
   const handleCreateDraft = () => {
     setDraftId(null)
+    setVersionList([])
+    setSelectedVersionId(null)
     setDraftName('')
     setInputItems([])
+    setDagValue(buildEmptyDag())
     setMappingText('')
+    setSelectedVersionDetail(null)
+    setVersionDetailError('')
     setRunResult(null)
   }
 
@@ -194,7 +256,34 @@ export function WeaverSection({ token, operator }: WeaverSectionProps) {
     return {
       name: draftName.trim(),
       inputs: inputsPayload,
+      dag: dagValue,
       mapping: mappingValue as Record<string, unknown>,
+    }
+  }
+
+  /**
+   *
+   * 解析输入源覆盖参数，用于版本运行时替换冻结输入。
+   *
+   */
+  const buildRunInputsPayload = () => {
+    const inputsPayload = inputItems.map((item, index) => {
+      if (!item.name.trim()) {
+        throw new Error(`第 ${index + 1} 个输入源缺少名称`)
+      }
+      let payloadValue: unknown
+      try {
+        payloadValue = JSON.parse(item.payloadText || '{}')
+      } catch {
+        throw new Error(`输入源 ${item.name} JSON 解析失败`)
+      }
+      return {
+        name: item.name.trim(),
+        payload: payloadValue as Record<string, unknown>,
+      }
+    })
+    return {
+      inputs: inputsPayload,
     }
   }
 
@@ -214,9 +303,12 @@ export function WeaverSection({ token, operator }: WeaverSectionProps) {
       if (draftId) {
         await updateWeaverDraft(token, draftId, payload, operator)
         toast.success('草稿更新成功')
+        await loadVersionList(draftId)
       } else {
-        const newDraft = await createWeaverDraft(token, payload, operator)
-        setDraftId(newDraft.id)
+        const createdDraft = await createWeaverDraft(token, payload, operator)
+        setDraftId(createdDraft.id)
+        setVersionList([])
+        setSelectedVersionId(null)
         toast.success('草稿创建成功')
       }
       await loadDraftList()
@@ -249,15 +341,109 @@ export function WeaverSection({ token, operator }: WeaverSectionProps) {
       setRunResult(result)
       toast.success('运行成功')
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : '运行失败')
+      toast.error(resolveWeaverRequestError(error, '运行失败'))
     } finally {
       setRunningDraft(false)
+    }
+  }
+
+  /**
+   *
+   * 发布当前草稿，用于生成可追踪版本快照。
+   *
+   */
+  const handlePublishDraft = async () => {
+    if (!token) {
+      toast.error('请先登录后再发布')
+      return
+    }
+    if (!draftId) {
+      toast.error('请先保存草稿')
+      return
+    }
+    setPublishingDraft(true)
+    try {
+      const version = await publishWeaverDraft(token, draftId, operator)
+      toast.success(`发布成功，版本号 v${version.version}`)
+      await loadVersionList(draftId)
+      setSelectedVersionId(version.id)
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : '发布失败')
+    } finally {
+      setPublishingDraft(false)
+    }
+  }
+
+  /**
+   *
+   * 运行已发布版本，用于验证发布快照执行结果。
+   *
+   */
+  const handleRunVersion = async () => {
+    if (!token) {
+      toast.error('请先登录后再运行')
+      return
+    }
+    if (!selectedVersionId) {
+      toast.error('请先选择版本')
+      return
+    }
+    setRunningVersion(true)
+    setRunResult(null)
+    try {
+      const payload = buildRunInputsPayload()
+      const result = await runWeaverVersion(token, selectedVersionId, payload, operator)
+      setRunResult(result)
+      toast.success('版本运行成功')
+    } catch (error) {
+      toast.error(resolveWeaverRequestError(error, '版本运行失败'))
+    } finally {
+      setRunningVersion(false)
     }
   }
 
   useEffect(() => {
     loadDraftList()
   }, [loadDraftList])
+
+  /**
+   *
+   * 读取当前选中版本详情，用于展示冻结输入、映射与DAG快照。
+   *
+   */
+  useEffect(() => {
+    if (!token || !selectedVersionId) {
+      setSelectedVersionDetail(null)
+      setVersionDetailError('')
+      return
+    }
+    let cancelled = false
+    const loadVersionDetail = async () => {
+      setLoadingVersionDetail(true)
+      setVersionDetailError('')
+      try {
+        const detail = await fetchWeaverVersion(token, selectedVersionId)
+        if (cancelled) {
+          return
+        }
+        setSelectedVersionDetail(detail)
+      } catch (error) {
+        if (cancelled) {
+          return
+        }
+        setSelectedVersionDetail(null)
+        setVersionDetailError(resolveWeaverRequestError(error, '读取版本详情失败'))
+      } finally {
+        if (!cancelled) {
+          setLoadingVersionDetail(false)
+        }
+      }
+    }
+    loadVersionDetail()
+    return () => {
+      cancelled = true
+    }
+  }, [token, selectedVersionId])
 
   return (
     <div className="weaver-container">
@@ -290,6 +476,35 @@ export function WeaverSection({ token, operator }: WeaverSectionProps) {
             ))
           )}
         </div>
+        <div className="weaver-sidebar-header">
+          <h3 className="weaver-sidebar-title">版本列表</h3>
+        </div>
+        <div className="weaver-list">
+          {!draftId ? (
+            <div className="p-4 text-center text-secondary">请先选择草稿</div>
+          ) : loadingVersions ? (
+            <div className="p-4 text-center text-secondary">加载中...</div>
+          ) : versionList.length === 0 ? (
+            <div className="p-4 text-center text-secondary">暂无发布版本</div>
+          ) : (
+            versionList.map((version) => (
+              <div
+                key={version.id}
+                className={`weaver-list-item ${selectedVersionId === version.id ? 'active' : ''}`}
+                onClick={() => {
+                  setSelectedVersionId(version.id)
+                  setRunResult(null)
+                }}
+              >
+                <div className="weaver-item-title">v{version.version} · {version.name}</div>
+                <div className="weaver-item-meta">
+                  <span>{version.operator || '-'}</span>
+                  <span>{new Date(version.created_at).toLocaleDateString()}</span>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
       </div>
 
       {/* 右侧编辑区域 */}
@@ -311,8 +526,21 @@ export function WeaverSection({ token, operator }: WeaverSectionProps) {
             <Button variant="secondary" onClick={handleSaveDraft} disabled={savingDraft}>
               <FiSave className="mr-1" /> {savingDraft ? '保存中...' : '保存'}
             </Button>
+            <Button
+              variant="secondary"
+              onClick={handlePublishDraft}
+              disabled={!draftId || publishingDraft || savingDraft || runningDraft || runningVersion}
+            >
+              <FiGitBranch className="mr-1" /> {publishingDraft ? '发布中...' : '发布'}
+            </Button>
             <Button onClick={handleRunDraft} disabled={runningDraft}>
               <FiPlay className="mr-1" /> {runningDraft ? '运行中...' : '运行'}
+            </Button>
+            <Button
+              onClick={handleRunVersion}
+              disabled={!selectedVersionId || runningVersion || runningDraft || publishingDraft}
+            >
+              <FiPlay className="mr-1" /> {runningVersion ? '版本运行中...' : '运行版本'}
             </Button>
           </div>
         </div>
@@ -368,7 +596,8 @@ export function WeaverSection({ token, operator }: WeaverSectionProps) {
 
             {/* 右半部分：映射规则与结果 */}
             <div className="flex flex-col gap-4">
-              <div className="flex flex-col h-1/2">
+              <WeaverGraphSkeleton dag={dagValue} onChange={setDagValue} />
+              <div className="flex flex-col">
                 <div className="weaver-form-section-title">
                   <span>映射规则 (Mapping)</span>
                 </div>
@@ -381,6 +610,28 @@ export function WeaverSection({ token, operator }: WeaverSectionProps) {
                   className="flex-1 min-h-[300px]"
                 />
               </div>
+              {selectedVersionId && (
+                <div className="weaver-result-panel flex flex-col">
+                  <div className="weaver-form-section-title">
+                    <FiBox className="mr-2" /> 版本详情
+                  </div>
+                  {loadingVersionDetail ? (
+                    <div className="p-4 rounded text-sm bg-placeholder">版本详情加载中...</div>
+                  ) : versionDetailError ? (
+                    <div className="p-4 rounded text-sm bg-error-dim">{versionDetailError}</div>
+                  ) : selectedVersionDetail ? (
+                    <CodeEditor
+                      label="Version Snapshot"
+                      value={JSON.stringify(buildVersionSnapshot(selectedVersionDetail), null, 2)}
+                      language="json"
+                      readOnly={true}
+                      height={220}
+                    />
+                  ) : (
+                    <div className="p-4 rounded text-sm bg-placeholder">暂无版本详情</div>
+                  )}
+                </div>
+              )}
 
               {runResult && (
                 <div className="weaver-result-panel flex flex-col flex-1">
